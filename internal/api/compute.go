@@ -40,6 +40,50 @@ func (a *ComputeAPI) GetServer(id string) (*model.Server, error) {
 	return &resp.Server, nil
 }
 
+// FindServer finds a server by ID or name.
+// If idOrName looks like a UUID, it tries GetServer first.
+// Otherwise, it lists all servers and matches by name.
+func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
+	// Try as ID first (UUID-like)
+	if len(idOrName) == 36 && idOrName[8] == '-' {
+		s, err := a.GetServer(idOrName)
+		if err == nil {
+			return s, nil
+		}
+	}
+
+	// Search by name
+	servers, err := a.ListServers()
+	if err != nil {
+		return nil, err
+	}
+	for i := range servers {
+		if servers[i].Name == idOrName {
+			return &servers[i], nil
+		}
+	}
+
+	// Fall back to ID lookup (in case it's a short/non-UUID ID)
+	s, err := a.GetServer(idOrName)
+	if err != nil {
+		return nil, fmt.Errorf("server %q not found", idOrName)
+	}
+	return s, nil
+}
+
+// RenameServer updates the server name.
+func (a *ComputeAPI) RenameServer(id, newName string) (*model.Server, error) {
+	url := fmt.Sprintf("%s/servers/%s", a.baseURL(), id)
+	body := map[string]any{
+		"server": map[string]string{"name": newName},
+	}
+	var resp model.ServerDetail
+	if err := a.Client.Put(url, body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Server, nil
+}
+
 // CreateServer creates a new server.
 func (a *ComputeAPI) CreateServer(req *model.ServerCreateRequest) (*model.Server, error) {
 	url := fmt.Sprintf("%s/servers", a.baseURL())

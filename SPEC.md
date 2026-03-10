@@ -34,4 +34,13 @@ ConoHa VPS3 API の全エンドポイントに対応する CLI ツール。
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.1.1 | 2026-03-10 | UX improvements (see below) |
 | 0.1.0 | 2026-03-10 | Initial implementation - all API endpoints |
+
+### 0.1.1 Changes
+
+- `auth login`: パスワード入力時にマスク表示（`*******`）、ペースト対応
+- `auth login/status`: トークン有効期限にJST（日本時間）も併記
+- `server show <id|name>`: ID だけでなくサーバー名でも指定可能に
+- `server show`: 出力を人間が読みやすい key-value 形式に改善
+- `server rename <id|name> <newname>`: サーバー名変更コマンドを追加

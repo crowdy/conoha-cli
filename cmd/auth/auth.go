@@ -119,8 +119,11 @@ var loginCmd = &cobra.Command{
 			return fmt.Errorf("saving token: %w", err)
 		}
 
-		fmt.Fprintf(os.Stderr, "Logged in to profile %q (token expires %s)\n",
-			profileName, result.ExpiresAt.Format(time.RFC3339))
+		jst := time.FixedZone("JST", 9*60*60)
+		fmt.Fprintf(os.Stderr, "Logged in to profile %q (token expires %s / %s JST)\n",
+			profileName,
+			result.ExpiresAt.Format(time.RFC3339),
+			result.ExpiresAt.In(jst).Format("2006-01-02 15:04"))
 		return nil
 	},
 }
@@ -181,11 +184,16 @@ var statusCmd = &cobra.Command{
 		fmt.Printf("Region:    %s\n", profile.Region)
 
 		if entry, ok := tokens.Get(profileName); ok {
+			jst := time.FixedZone("JST", 9*60*60)
 			remaining := time.Until(entry.ExpiresAt)
 			if remaining > 0 {
-				fmt.Printf("Token:     valid (expires in %s)\n", remaining.Truncate(time.Minute))
+				fmt.Printf("Token:     valid (expires in %s, %s JST)\n",
+					remaining.Truncate(time.Minute),
+					entry.ExpiresAt.In(jst).Format("2006-01-02 15:04"))
 			} else {
-				fmt.Printf("Token:     expired (%s ago)\n", (-remaining).Truncate(time.Minute))
+				fmt.Printf("Token:     expired (%s ago, was %s JST)\n",
+					(-remaining).Truncate(time.Minute),
+					entry.ExpiresAt.In(jst).Format("2006-01-02 15:04"))
 			}
 		} else {
 			fmt.Printf("Token:     none\n")
