@@ -184,7 +184,11 @@ var statusCmd = &cobra.Command{
 
 		fmt.Printf("Profile:   %s\n", profileName)
 		fmt.Printf("Tenant ID: %s\n", profile.TenantID)
-		fmt.Printf("Username:  %s\n", profile.Username)
+		if os.Getenv(config.EnvEndpointMode) == "int" {
+			fmt.Printf("User ID:   %s\n", profile.Username)
+		} else {
+			fmt.Printf("Username:  %s\n", profile.Username)
+		}
 		fmt.Printf("Region:    %s\n", profile.Region)
 
 		if entry, ok := tokens.Get(profileName); ok {
