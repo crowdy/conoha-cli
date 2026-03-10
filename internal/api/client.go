@@ -1,0 +1,185 @@
+package api
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
+)
+
+const (
+	defaultTimeout = 30 * time.Second
+	maxRetries     = 3
+)
+
+// Client is the base HTTP client for ConoHa API.
+type Client struct {
+	HTTP     *http.Client
+	Region   string
+	Token    string
+	TenantID string
+}
+
+// NewClient creates a new API client.
+func NewClient(region, token, tenantID string) *Client {
+	return &Client{
+		HTTP:     &http.Client{Timeout: defaultTimeout},
+		Region:   region,
+		Token:    token,
+		TenantID: tenantID,
+	}
+}
+
+// BaseURL returns the service endpoint URL.
+func (c *Client) BaseURL(service string) string {
+	return fmt.Sprintf("https://%s.%s.conoha.io", service, c.Region)
+}
+
+// Do executes an HTTP request with auth headers and error handling.
+func (c *Client) Do(req *http.Request) (*http.Response, error) {
+	if c.Token != "" {
+		req.Header.Set("X-Auth-Token", c.Token)
+	}
+	if req.Header.Get("Content-Type") == "" && req.Body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", "application/json")
+
+	var resp *http.Response
+	var err error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err = c.HTTP.Do(req)
+		if err != nil {
+			if attempt == maxRetries {
+				return nil, &cerrors.NetworkError{Err: err}
+			}
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+			continue
+		}
+		// Retry on 429 or 5xx
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+			if attempt < maxRetries {
+				resp.Body.Close()
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+				continue
+			}
+		}
+		break
+	}
+
+	if resp.StatusCode >= 400 {
+		return resp, parseAPIError(resp)
+	}
+
+	return resp, nil
+}
+
+// Request creates and executes a request, returning the response.
+func (c *Client) Request(method, url string, body any) (*http.Response, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling request body: %w", err)
+		}
+		bodyReader = bytes.NewReader(data)
+	}
+
+	req, err := http.NewRequest(method, url, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	return c.Do(req)
+}
+
+// Get performs a GET request and decodes the response into result.
+func (c *Client) Get(url string, result any) error {
+	resp, err := c.Request(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if result != nil {
+		return json.NewDecoder(resp.Body).Decode(result)
+	}
+	return nil
+}
+
+// Post performs a POST request and decodes the response into result.
+func (c *Client) Post(url string, body, result any) (*http.Response, error) {
+	resp, err := c.Request(http.MethodPost, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	if result != nil {
+		defer resp.Body.Close()
+		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+			return resp, err
+		}
+	}
+	return resp, nil
+}
+
+// Put performs a PUT request.
+func (c *Client) Put(url string, body, result any) error {
+	resp, err := c.Request(http.MethodPut, url, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if result != nil {
+		return json.NewDecoder(resp.Body).Decode(result)
+	}
+	return nil
+}
+
+// Delete performs a DELETE request.
+func (c *Client) Delete(url string) error {
+	resp, err := c.Request(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// parseAPIError reads the response body and returns an APIError.
+func parseAPIError(resp *http.Response) error {
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	apiErr := &cerrors.APIError{
+		StatusCode: resp.StatusCode,
+		Message:    string(body),
+	}
+
+	// Try to parse structured error
+	var errResp struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &errResp) == nil && errResp.Error.Message != "" {
+		apiErr.Code = errResp.Error.Code
+		apiErr.Message = errResp.Error.Message
+	}
+
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		return &cerrors.AuthError{Message: apiErr.Message}
+	}
+	if resp.StatusCode == 404 {
+		return &cerrors.NotFoundError{Resource: "resource", ID: ""}
+	}
+
+	return apiErr
+}
