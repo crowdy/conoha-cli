@@ -113,6 +113,7 @@ Configuration files are stored in `~/.config/conoha/`:
 | `CONOHA_CONFIG_DIR` | Config directory path |
 | `CONOHA_NO_INPUT` | Non-interactive mode (`1` or `true`) |
 | `CONOHA_ENDPOINT` | API endpoint override |
+| `CONOHA_ENDPOINT_MODE` | `int` for internal API mode (appends service to path) |
 | `CONOHA_DEBUG` | Debug logging (`1` or `api`) |
 
 Priority: environment variables > flags > profile config > defaults

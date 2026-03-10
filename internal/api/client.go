@@ -39,10 +39,24 @@ func NewClient(region, token, tenantID string) *Client {
 	}
 }
 
+// intServiceMap maps external service names to internal API path segments.
+var intServiceMap = map[string]string{
+	"image":      "image-service",
+	"networking": "network",
+}
+
 // BaseURL returns the service endpoint URL.
 // If CONOHA_ENDPOINT is set, it overrides the default URL.
+// If CONOHA_ENDPOINT_MODE=int, the service name is appended as a path segment
+// (with remapping for services that differ between ext and int APIs).
 func (c *Client) BaseURL(service string) string {
 	if ep := os.Getenv(config.EnvEndpoint); ep != "" {
+		if os.Getenv(config.EnvEndpointMode) == "int" {
+			if mapped, ok := intServiceMap[service]; ok {
+				service = mapped
+			}
+			return ep + "/" + service
+		}
 		return ep
 	}
 	return fmt.Sprintf("https://%s.%s.conoha.io", service, c.Region)

@@ -30,7 +30,11 @@ type TokenResult struct {
 func Authenticate(region, tenantID, username, password string) (*TokenResult, error) {
 	baseURL := fmt.Sprintf("https://identity.%s.conoha.io", region)
 	if ep := os.Getenv(config.EnvEndpoint); ep != "" {
-		baseURL = ep
+		if os.Getenv(config.EnvEndpointMode) == "int" {
+			baseURL = ep + "/identity"
+		} else {
+			baseURL = ep
+		}
 	}
 	url := baseURL + "/v3/auth/tokens"
 
