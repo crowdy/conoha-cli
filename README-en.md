@@ -44,8 +44,11 @@ conoha server list
 # Output in JSON format
 conoha server list --format json
 
-# Show server details
-conoha server show <server-id>
+# Show server details (by ID or name)
+conoha server show <server-id-or-name>
+
+# Rename a server
+conoha server rename <server-id-or-name> new-name
 ```
 
 ## Commands
@@ -53,7 +56,7 @@ conoha server show <server-id>
 | Command | Description |
 |---------|-------------|
 | `conoha auth` | Authentication (login / logout / status / list / switch / token / remove) |
-| `conoha server` | Server management (list / show / create / delete / start / stop / reboot / resize / rebuild / console) |
+| `conoha server` | Server management (list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console) |
 | `conoha flavor` | Flavor listing (list / show) |
 | `conoha keypair` | SSH keypair management (list / create / delete) |
 | `conoha volume` | Block storage (list / show / create / delete / types / backup) |
@@ -71,7 +74,7 @@ Configuration files are stored in `~/.config/conoha/`:
 
 | File | Description | Permission |
 |------|-------------|------------|
-| `config.yaml` | Profile settings | 0644 |
+| `config.yaml` | Profile settings | 0600 |
 | `credentials.yaml` | Passwords | 0600 |
 | `tokens.yaml` | Token cache | 0600 |
 

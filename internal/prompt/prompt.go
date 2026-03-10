@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/crowdy/conoha-cli/internal/config"
 )
 
@@ -23,18 +25,19 @@ func String(label string) (string, error) {
 	return strings.TrimSpace(s), nil
 }
 
-// Password prompts for a password (no echo in future, plain for now).
+// Password prompts for a password with masked input (shows *).
 func Password(label string) (string, error) {
 	if config.IsNoInput() {
 		return "", fmt.Errorf("input required but --no-input is set")
 	}
 	fmt.Fprintf(os.Stderr, "%s: ", label)
-	reader := bufio.NewReader(os.Stdin)
-	s, err := reader.ReadString('\n')
+	fd := int(os.Stdin.Fd())
+	b, err := term.ReadPassword(fd)
+	fmt.Fprintln(os.Stderr) // newline after masked input
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("reading password: %w", err)
 	}
-	return strings.TrimSpace(s), nil
+	return strings.TrimSpace(string(b)), nil
 }
 
 // Confirm asks for yes/no confirmation.

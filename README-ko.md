@@ -44,8 +44,11 @@ conoha server list
 # JSON 형식으로 출력
 conoha server list --format json
 
-# 서버 상세 정보
-conoha server show <server-id>
+# 서버 상세 정보 (ID 또는 서버명으로 지정 가능)
+conoha server show <server-id-or-name>
+
+# 서버 이름 변경
+conoha server rename <server-id-or-name> new-name
 ```
 
 ## 명령어 목록
@@ -53,7 +56,7 @@ conoha server show <server-id>
 | 명령어 | 설명 |
 |--------|------|
 | `conoha auth` | 인증 관리 (login / logout / status / list / switch / token / remove) |
-| `conoha server` | 서버 관리 (list / show / create / delete / start / stop / reboot / resize / rebuild / console) |
+| `conoha server` | 서버 관리 (list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console) |
 | `conoha flavor` | 플레이버 조회 (list / show) |
 | `conoha keypair` | SSH 키페어 관리 (list / create / delete) |
 | `conoha volume` | 블록 스토리지 관리 (list / show / create / delete / types / backup) |
@@ -71,7 +74,7 @@ conoha server show <server-id>
 
 | 파일 | 설명 | 퍼미션 |
 |------|------|--------|
-| `config.yaml` | 프로필 설정 | 0644 |
+| `config.yaml` | 프로필 설정 | 0600 |
 | `credentials.yaml` | 비밀번호 | 0600 |
 | `tokens.yaml` | 토큰 캐시 | 0600 |
 

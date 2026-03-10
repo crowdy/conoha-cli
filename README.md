@@ -44,8 +44,11 @@ conoha server list
 # JSON 形式で出力
 conoha server list --format json
 
-# サーバーの詳細を表示
-conoha server show <server-id>
+# サーバーの詳細を表示（ID またはサーバー名で指定可能）
+conoha server show <server-id-or-name>
+
+# サーバー名の変更
+conoha server rename <server-id-or-name> new-name
 ```
 
 ## コマンド一覧
@@ -53,7 +56,7 @@ conoha server show <server-id>
 | コマンド | 説明 |
 |---------|------|
 | `conoha auth` | 認証管理（login / logout / status / list / switch / token / remove） |
-| `conoha server` | サーバー管理（list / show / create / delete / start / stop / reboot / resize / rebuild / console） |
+| `conoha server` | サーバー管理（list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console） |
 | `conoha flavor` | フレーバー一覧・詳細（list / show） |
 | `conoha keypair` | SSH キーペア管理（list / create / delete） |
 | `conoha volume` | ブロックストレージ管理（list / show / create / delete / types / backup） |
@@ -71,7 +74,7 @@ conoha server show <server-id>
 
 | ファイル | 説明 | パーミッション |
 |---------|------|------------|
-| `config.yaml` | プロファイル設定 | 0644 |
+| `config.yaml` | プロファイル設定 | 0600 |
 | `credentials.yaml` | パスワード | 0600 |
 | `tokens.yaml` | トークンキャッシュ | 0600 |
 
