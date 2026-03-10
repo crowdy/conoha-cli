@@ -211,18 +211,79 @@ User-Agent: crowdy/conoha-cli/{version}
 | `cmd/root.go` | Set `api.UserAgent` from `version` at init |
 | `internal/api/client_test.go` | Verify User-Agent header |
 
+#### 7. Debug logging via `CONOHA_DEBUG` and `--verbose`
+
+**Current**: No debug/HTTP logging. `--verbose` flag is defined in README but not implemented.
+
+**After**: Two levels of debug output, all to **stderr** (never stdout).
+
+**Activation**:
+
+| Method | Level | What is logged |
+|--------|-------|----------------|
+| `--verbose` or `CONOHA_DEBUG=1` | verbose | HTTP method, URL, status code, duration |
+| `CONOHA_DEBUG=api` | api | verbose + request/response headers and bodies |
+
+**Output format** (stderr):
+
+```
+# verbose level (CONOHA_DEBUG=1)
+> POST https://identity.c3j1.conoha.io/v3/auth/tokens
+< 201 Created (243ms)
+
+> GET https://compute.c3j1.conoha.io/v2.1/servers/detail
+< 200 OK (128ms)
+
+# api level (CONOHA_DEBUG=api)
+> POST https://identity.c3j1.conoha.io/v3/auth/tokens
+> Content-Type: application/json
+> User-Agent: crowdy/conoha-cli/v0.1.3
+> {"auth":{"identity":{"methods":["password"],"password":{"user":{"name":"...","password":"****"}}}}}
+< 201 Created (243ms)
+< X-Subject-Token: ****
+< Content-Type: application/json
+< {"token":{"expires_at":"2026-03-11T12:00:00Z",...}}
+```
+
+**Security — sensitive data masking**:
+- Passwords in request bodies → `"password":"****"`
+- `X-Auth-Token` header value → `****`
+- `X-Subject-Token` header value → `****`
+- `Authorization` header value → `****`
+
+**Design**:
+- Add `CONOHA_DEBUG` env var to `internal/config/env.go`
+- Add `internal/api/debug.go` (new) — debug logger with level check, request/response logging
+- `--verbose` flag in `cmd/root.go` sets `CONOHA_DEBUG=1` equivalent internally
+- Logging hooks in `Client.Do()` (before request, after response)
+- `Authenticate()` also uses the same logging
+- Priority: `CONOHA_DEBUG=api` > `CONOHA_DEBUG=1` > `--verbose` (same as `1`) > off
+
+**Modified files**:
+
+| File | Change |
+|------|--------|
+| `internal/config/env.go` | Add `EnvDebug` constant |
+| `internal/api/debug.go` | **New** — debug logger, request/response logging, masking |
+| `internal/api/client.go` | Add logging hooks in `Do()` |
+| `internal/api/auth.go` | Add logging in `Authenticate()` |
+| `cmd/root.go` | Wire `--verbose` flag to debug level |
+| `internal/api/debug_test.go` | **New** — test masking, log output |
+
 #### Modified files summary
 
 | File | Change |
 |------|--------|
 | `cmd/flavor/flavor.go` | Sort, human-readable RAM/DISK, footer message |
-| `internal/config/env.go` | Add `EnvEndpoint` constant |
-| `internal/api/client.go` | `BaseURL()` endpoint override, User-Agent header |
-| `internal/api/auth.go` | `Authenticate()` endpoint override, User-Agent header |
+| `cmd/root.go` | Set `api.UserAgent` from version, wire `--verbose` to debug |
+| `internal/config/env.go` | Add `EnvEndpoint`, `EnvDebug` constants |
+| `internal/api/client.go` | `BaseURL()` endpoint override, User-Agent header, debug logging |
+| `internal/api/auth.go` | `Authenticate()` endpoint override, User-Agent header, debug logging |
+| `internal/api/debug.go` | **New** — debug logger, HTTP logging, sensitive data masking |
 | `internal/api/client_test.go` | Endpoint override test, User-Agent test |
-| `cmd/root.go` | Set `api.UserAgent` from version |
-| `README.md`, `README-en.md`, `README-ko.md` | Add `CONOHA_ENDPOINT` to env vars |
-| `CLAUDE.md` | Add `CONOHA_ENDPOINT` to env vars |
+| `internal/api/debug_test.go` | **New** — masking test, log output test |
+| `README.md`, `README-en.md`, `README-ko.md` | Add `CONOHA_ENDPOINT`, `CONOHA_DEBUG` to env vars |
+| `CLAUDE.md` | Add `CONOHA_ENDPOINT`, `CONOHA_DEBUG` to env vars |
 
 ### 0.1.2 Changes
 
