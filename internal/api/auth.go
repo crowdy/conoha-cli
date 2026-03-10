@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/crowdy/conoha-cli/internal/config"
@@ -26,20 +28,39 @@ type TokenResult struct {
 
 // Authenticate obtains a new token from the Identity API.
 func Authenticate(region, tenantID, username, password string) (*TokenResult, error) {
-	url := fmt.Sprintf("https://identity.%s.conoha.io/v3/auth/tokens", region)
+	baseURL := fmt.Sprintf("https://identity.%s.conoha.io", region)
+	if ep := os.Getenv(config.EnvEndpoint); ep != "" {
+		if os.Getenv(config.EnvEndpointMode) == "int" {
+			baseURL = ep + "/identity"
+		} else {
+			baseURL = ep
+		}
+	}
+	url := baseURL + "/v3/auth/tokens"
+
+	// Internal API requires user.id; external API uses user.name + domain.
+	var userObj map[string]any
+	if os.Getenv(config.EnvEndpointMode) == "int" {
+		userObj = map[string]any{
+			"id":       username,
+			"password": password,
+		}
+	} else {
+		userObj = map[string]any{
+			"name":     username,
+			"password": password,
+			"domain": map[string]any{
+				"id": "default",
+			},
+		}
+	}
 
 	body := map[string]any{
 		"auth": map[string]any{
 			"identity": map[string]any{
 				"methods": []string{"password"},
 				"password": map[string]any{
-					"user": map[string]any{
-						"name":     username,
-						"password": password,
-						"domain": map[string]any{
-							"id": "default",
-						},
-					},
+					"user": userObj,
 				},
 			},
 			"scope": map[string]any{
@@ -61,13 +82,27 @@ func Authenticate(region, tenantID, username, password string) (*TokenResult, er
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
+
+	debugLogRequest(req, jsonBody)
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, &cerrors.NetworkError{Err: err}
 	}
 	defer resp.Body.Close()
+
+	// Debug log response
+	elapsed := time.Since(start)
+	if debugLevel >= DebugAPI {
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		debugLogResponse(resp, elapsed, respBody)
+	} else {
+		debugLogResponse(resp, elapsed, nil)
+	}
 
 	if resp.StatusCode != http.StatusCreated {
 		return nil, &cerrors.AuthError{

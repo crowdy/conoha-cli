@@ -6,10 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/crowdy/conoha-cli/internal/config"
 	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
+
+// UserAgent is the User-Agent header value sent with all requests.
+var UserAgent = "crowdy/conoha-cli/dev"
 
 const (
 	defaultTimeout = 30 * time.Second
@@ -34,8 +39,26 @@ func NewClient(region, token, tenantID string) *Client {
 	}
 }
 
+// intServiceMap maps external service names to internal API path segments.
+var intServiceMap = map[string]string{
+	"image":      "image-service",
+	"networking": "network",
+}
+
 // BaseURL returns the service endpoint URL.
+// If CONOHA_ENDPOINT is set, it overrides the default URL.
+// If CONOHA_ENDPOINT_MODE=int, the service name is appended as a path segment
+// (with remapping for services that differ between ext and int APIs).
 func (c *Client) BaseURL(service string) string {
+	if ep := os.Getenv(config.EnvEndpoint); ep != "" {
+		if os.Getenv(config.EnvEndpointMode) == "int" {
+			if mapped, ok := intServiceMap[service]; ok {
+				service = mapped
+			}
+			return ep + "/" + service
+		}
+		return ep
+	}
 	return fmt.Sprintf("https://%s.%s.conoha.io", service, c.Region)
 }
 
@@ -43,6 +66,7 @@ func (c *Client) BaseURL(service string) string {
 // Note: retries only work for requests without a body (GET/DELETE).
 // POST/PUT with a body are not retried because the body is consumed on first attempt.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", UserAgent)
 	if c.Token != "" {
 		req.Header.Set("X-Auth-Token", c.Token)
 	}
@@ -51,6 +75,15 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
+	// Read request body for debug logging
+	var reqBody []byte
+	if debugLevel >= DebugAPI && req.Body != nil {
+		reqBody, _ = io.ReadAll(req.Body)
+		req.Body = io.NopCloser(bytes.NewReader(reqBody))
+	}
+	debugLogRequest(req, reqBody)
+
+	start := time.Now()
 	var resp *http.Response
 	var err error
 
@@ -77,9 +110,20 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		}
 		break
 	}
+	elapsed := time.Since(start)
 
 	if resp == nil {
 		return nil, &cerrors.NetworkError{Err: fmt.Errorf("no response after retries")}
+	}
+
+	// Debug log response
+	if debugLevel >= DebugAPI {
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		debugLogResponse(resp, elapsed, respBody)
+	} else {
+		debugLogResponse(resp, elapsed, nil)
 	}
 
 	if resp.StatusCode >= 400 {

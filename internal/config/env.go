@@ -4,14 +4,17 @@ import "os"
 
 // Environment variable names
 const (
-	EnvProfile   = "CONOHA_PROFILE"
-	EnvTenantID  = "CONOHA_TENANT_ID"
-	EnvUsername  = "CONOHA_USERNAME"
-	EnvPassword  = "CONOHA_PASSWORD"
-	EnvToken     = "CONOHA_TOKEN"
-	EnvFormat    = "CONOHA_FORMAT"
-	EnvConfigDir = "CONOHA_CONFIG_DIR"
-	EnvNoInput   = "CONOHA_NO_INPUT"
+	EnvProfile      = "CONOHA_PROFILE"
+	EnvTenantID     = "CONOHA_TENANT_ID"
+	EnvUsername     = "CONOHA_USERNAME"
+	EnvPassword     = "CONOHA_PASSWORD"
+	EnvToken        = "CONOHA_TOKEN"
+	EnvFormat       = "CONOHA_FORMAT"
+	EnvConfigDir    = "CONOHA_CONFIG_DIR"
+	EnvNoInput      = "CONOHA_NO_INPUT"
+	EnvEndpoint     = "CONOHA_ENDPOINT"
+	EnvEndpointMode = "CONOHA_ENDPOINT_MODE"
+	EnvDebug        = "CONOHA_DEBUG"
 )
 
 // EnvOr returns the environment variable value if set, otherwise the fallback.

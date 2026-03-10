@@ -27,7 +27,29 @@ go install github.com/crowdy/conoha-cli@latest
 
 ### Release binaries
 
-Download from the [Releases](https://github.com/crowdy/conoha-cli/releases) page.
+Download from the [Releases](https://github.com/crowdy/conoha-cli/releases) page, or use the commands below:
+
+**Linux (amd64)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-linux-amd64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**macOS (Apple Silicon)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-darwin-arm64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**Windows (amd64)**
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-windows-amd64.exe -OutFile conoha.exe
+```
 
 ## Quick Start
 
@@ -90,6 +112,9 @@ Configuration files are stored in `~/.config/conoha/`:
 | `CONOHA_FORMAT` | Output format |
 | `CONOHA_CONFIG_DIR` | Config directory path |
 | `CONOHA_NO_INPUT` | Non-interactive mode (`1` or `true`) |
+| `CONOHA_ENDPOINT` | API endpoint override |
+| `CONOHA_ENDPOINT_MODE` | `int` for internal API mode (appends service to path) |
+| `CONOHA_DEBUG` | Debug logging (`1` or `api`) |
 
 Priority: environment variables > flags > profile config > defaults
 

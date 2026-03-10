@@ -27,7 +27,29 @@ go install github.com/crowdy/conoha-cli@latest
 
 ### 릴리스 바이너리
 
-[Releases](https://github.com/crowdy/conoha-cli/releases) 페이지에서 다운로드하세요.
+[Releases](https://github.com/crowdy/conoha-cli/releases) 페이지에서 다운로드하거나, 아래 명령어를 사용하세요:
+
+**Linux (amd64)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-linux-amd64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**macOS (Apple Silicon)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-darwin-arm64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**Windows (amd64)**
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-windows-amd64.exe -OutFile conoha.exe
+```
 
 ## 빠른 시작
 
@@ -90,6 +112,9 @@ conoha server rename <server-id-or-name> new-name
 | `CONOHA_FORMAT` | 출력 형식 |
 | `CONOHA_CONFIG_DIR` | 설정 디렉토리 경로 |
 | `CONOHA_NO_INPUT` | 비대화 모드 (`1` 또는 `true`) |
+| `CONOHA_ENDPOINT` | API 엔드포인트 오버라이드 |
+| `CONOHA_ENDPOINT_MODE` | `int`로 내부 API 모드 (서비스명을 경로에 추가) |
+| `CONOHA_DEBUG` | 디버그 로깅 (`1` 또는 `api`) |
 
 우선순위: 환경 변수 > 플래그 > 프로필 설정 > 기본값
 

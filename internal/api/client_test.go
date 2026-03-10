@@ -135,3 +135,31 @@ func TestBaseURL(t *testing.T) {
 		t.Errorf("expected %q, got %q", expected, url)
 	}
 }
+
+func TestBaseURLWithEndpointOverride(t *testing.T) {
+	t.Setenv("CONOHA_ENDPOINT", "https://staging.internal.gmo.jp")
+	client := NewClient("c3j1", "tok", "tenant1")
+	url := client.BaseURL("compute")
+	expected := "https://staging.internal.gmo.jp"
+	if url != expected {
+		t.Errorf("expected %q, got %q", expected, url)
+	}
+}
+
+func TestUserAgentHeader(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ua := r.Header.Get("User-Agent")
+		if ua != UserAgent {
+			t.Errorf("expected User-Agent %q, got %q", UserAgent, ua)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{HTTP: ts.Client(), Token: "tok"}
+	err := client.Get(ts.URL, nil)
+	if err != nil {
+		t.Fatalf("Get() error: %v", err)
+	}
+}

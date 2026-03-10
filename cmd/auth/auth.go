@@ -54,7 +54,11 @@ var loginCmd = &cobra.Command{
 
 		username := config.EnvOr(config.EnvUsername, profile.Username)
 		if username == "" {
-			username, err = prompt.String("API Username")
+			usernameLabel := "API Username"
+			if os.Getenv(config.EnvEndpointMode) == "int" {
+				usernameLabel = "User ID"
+			}
+			username, err = prompt.String(usernameLabel)
 			if err != nil {
 				return err
 			}
@@ -180,7 +184,11 @@ var statusCmd = &cobra.Command{
 
 		fmt.Printf("Profile:   %s\n", profileName)
 		fmt.Printf("Tenant ID: %s\n", profile.TenantID)
-		fmt.Printf("Username:  %s\n", profile.Username)
+		if os.Getenv(config.EnvEndpointMode) == "int" {
+			fmt.Printf("User ID:   %s\n", profile.Username)
+		} else {
+			fmt.Printf("Username:  %s\n", profile.Username)
+		}
 		fmt.Printf("Region:    %s\n", profile.Region)
 
 		if entry, ok := tokens.Get(profileName); ok {

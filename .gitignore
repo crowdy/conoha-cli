@@ -28,3 +28,5 @@ tokens.yaml
 
 # Claude Code
 .claude/
+CLAUDE.md
+diary/
