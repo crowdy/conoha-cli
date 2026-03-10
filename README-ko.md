@@ -90,6 +90,8 @@ conoha server rename <server-id-or-name> new-name
 | `CONOHA_FORMAT` | 출력 형식 |
 | `CONOHA_CONFIG_DIR` | 설정 디렉토리 경로 |
 | `CONOHA_NO_INPUT` | 비대화 모드 (`1` 또는 `true`) |
+| `CONOHA_ENDPOINT` | API 엔드포인트 오버라이드 |
+| `CONOHA_DEBUG` | 디버그 로깅 (`1` 또는 `api`) |
 
 우선순위: 환경 변수 > 플래그 > 프로필 설정 > 기본값
 

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/crowdy/conoha-cli/internal/config"
@@ -26,7 +28,11 @@ type TokenResult struct {
 
 // Authenticate obtains a new token from the Identity API.
 func Authenticate(region, tenantID, username, password string) (*TokenResult, error) {
-	url := fmt.Sprintf("https://identity.%s.conoha.io/v3/auth/tokens", region)
+	baseURL := fmt.Sprintf("https://identity.%s.conoha.io", region)
+	if ep := os.Getenv(config.EnvEndpoint); ep != "" {
+		baseURL = ep
+	}
+	url := baseURL + "/v3/auth/tokens"
 
 	body := map[string]any{
 		"auth": map[string]any{
@@ -61,13 +67,27 @@ func Authenticate(region, tenantID, username, password string) (*TokenResult, er
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
+
+	debugLogRequest(req, jsonBody)
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, &cerrors.NetworkError{Err: err}
 	}
 	defer resp.Body.Close()
+
+	// Debug log response
+	elapsed := time.Since(start)
+	if debugLevel >= DebugAPI {
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		debugLogResponse(resp, elapsed, respBody)
+	} else {
+		debugLogResponse(resp, elapsed, nil)
+	}
 
 	if resp.StatusCode != http.StatusCreated {
 		return nil, &cerrors.AuthError{

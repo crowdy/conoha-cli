@@ -18,6 +18,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/server"
 	"github.com/crowdy/conoha-cli/cmd/storage"
 	"github.com/crowdy/conoha-cli/cmd/volume"
+	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/config"
 	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
@@ -40,6 +41,12 @@ var rootCmd = &cobra.Command{
 	Long:          "Command-line interface for ConoHa VPS3 API",
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		api.UserAgent = "crowdy/conoha-cli/" + version
+		if flagVerbose {
+			api.SetDebugLevel(api.DebugVerbose)
+		}
+	},
 }
 
 func init() {

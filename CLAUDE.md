@@ -34,3 +34,4 @@ internal/errors/ - Error types and exit codes
 - Config dir: `~/.config/conoha/` (config.yaml, credentials.yaml, tokens.yaml)
 - Credentials file must be 0600
 - Environment variables override config: CONOHA_PROFILE, CONOHA_TENANT_ID, etc.
+- CONOHA_ENDPOINT overrides API base URL, CONOHA_DEBUG enables debug logging (1 or api)

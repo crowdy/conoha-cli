@@ -12,6 +12,8 @@ const (
 	EnvFormat    = "CONOHA_FORMAT"
 	EnvConfigDir = "CONOHA_CONFIG_DIR"
 	EnvNoInput   = "CONOHA_NO_INPUT"
+	EnvEndpoint  = "CONOHA_ENDPOINT"
+	EnvDebug     = "CONOHA_DEBUG"
 )
 
 // EnvOr returns the environment variable value if set, otherwise the fallback.

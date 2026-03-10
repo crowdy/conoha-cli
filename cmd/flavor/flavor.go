@@ -1,7 +1,9 @@
 package flavor
 
 import (
+	"fmt"
 	"os"
+	"sort"
 
 	"github.com/spf13/cobra"
 
@@ -34,18 +36,40 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
+		sort.Slice(flavors, func(i, j int) bool {
+			if flavors[i].VCPUs != flavors[j].VCPUs {
+				return flavors[i].VCPUs < flavors[j].VCPUs
+			}
+			return flavors[i].RAM < flavors[j].RAM
+		})
+
 		type row struct {
+			VCPUs int    `json:"vcpus"`
+			RAM   string `json:"ram"`
+			Disk  string `json:"disk"`
 			ID    string `json:"id"`
 			Name  string `json:"name"`
-			VCPUs int    `json:"vcpus"`
-			RAM   int    `json:"ram"`
-			Disk  int    `json:"disk"`
 		}
 		rows := make([]row, len(flavors))
 		for i, f := range flavors {
-			rows[i] = row{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAM: f.RAM, Disk: f.Disk}
+			rows[i] = row{
+				VCPUs: f.VCPUs,
+				RAM:   formatMB(f.RAM),
+				Disk:  formatDiskGB(f.Disk),
+				ID:    f.ID,
+				Name:  f.Name,
+			}
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+
+		format := cmdutil.GetFormat(cmd)
+		if err := output.New(format).Format(os.Stdout, rows); err != nil {
+			return err
+		}
+		if format == "" || format == "table" {
+			fmt.Fprintln(os.Stderr, "\nNote: Some flavors may be restricted to prevent abuse. If you cannot use a flavor,")
+			fmt.Fprintln(os.Stderr, "please contact ConoHa support: https://www.conoha.jp/conoha/contact/")
+		}
+		return nil
 	},
 }
 
@@ -65,4 +89,21 @@ var showCmd = &cobra.Command{
 		}
 		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, flavor)
 	},
+}
+
+func formatMB(mb int) string {
+	if mb == 0 {
+		return "0"
+	}
+	if mb%1024 == 0 {
+		return fmt.Sprintf("%dG", mb/1024)
+	}
+	return fmt.Sprintf("%dM", mb)
+}
+
+func formatDiskGB(gb int) string {
+	if gb == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%dG", gb)
 }

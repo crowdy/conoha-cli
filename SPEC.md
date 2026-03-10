@@ -34,12 +34,12 @@ ConoHa VPS3 API の全エンドポイントに対応する CLI ツール。
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 0.1.3 | TBD | flavor list UX improvements, CONOHA_ENDPOINT support (see below) |
+| 0.1.3 | 2026-03-10 | flavor list UX improvements, CONOHA_ENDPOINT support (see below) |
 | 0.1.2 | 2026-03-10 | Bug fixes and feature improvements (see below) |
 | 0.1.1 | 2026-03-10 | UX improvements (see below) |
 | 0.1.0 | 2026-03-10 | Initial implementation - all API endpoints |
 
-### 0.1.3 Changes (planned)
+### 0.1.3 Changes
 
 #### 1. `flavor list`: Sort by CPU/memory instead of ID
 

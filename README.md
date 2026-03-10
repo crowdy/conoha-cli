@@ -90,6 +90,8 @@ conoha server rename <server-id-or-name> new-name
 | `CONOHA_FORMAT` | 出力形式 |
 | `CONOHA_CONFIG_DIR` | 設定ディレクトリ |
 | `CONOHA_NO_INPUT` | 非対話モード（`1` or `true`） |
+| `CONOHA_ENDPOINT` | API エンドポイント上書き |
+| `CONOHA_DEBUG` | デバッグログ（`1` or `api`） |
 
 優先順位: 環境変数 > フラグ > プロファイル設定 > デフォルト値
 
