@@ -34,10 +34,29 @@ ConoHa VPS3 API の全エンドポイントに対応する CLI ツール。
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.1.4 | TBD | Version output branding (see below) |
 | 0.1.3 | 2026-03-10 | flavor list UX improvements, CONOHA_ENDPOINT support (see below) |
 | 0.1.2 | 2026-03-10 | Bug fixes and feature improvements (see below) |
 | 0.1.1 | 2026-03-10 | UX improvements (see below) |
 | 0.1.0 | 2026-03-10 | Initial implementation - all API endpoints |
+
+### 0.1.4 Changes (planned)
+
+#### 1. `version`: Add author and unofficial notice
+
+**Current**:
+```
+conoha version v0.1.3
+```
+
+**After**:
+```
+conoha version v0.1.4 by crowdy@gmail.com
+This is an unofficial tool and is not affiliated with or endorsed by ConoHa/GMO Internet Group.
+```
+
+**Modified files**:
+- `cmd/version.go` — update version output format
 
 ### 0.1.3 Changes
 

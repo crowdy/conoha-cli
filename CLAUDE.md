@@ -8,10 +8,13 @@ Single binary, agent-friendly design with structured output.
 ```bash
 make build      # Build binary
 make test       # Run tests
-make lint       # Run linter
+make lint       # Run linter (see note below)
 make clean      # Clean artifacts
 go test ./...   # Run all tests
 ```
+
+**Note**: `golangci-lint` is installed at `~/.asdf/installs/golang/1.26.1/packages/bin/golangci-lint`.
+Add it to PATH before running: `export PATH="$HOME/.asdf/installs/golang/1.26.1/packages/bin:$PATH"`
 
 ## Project Structure
 ```
