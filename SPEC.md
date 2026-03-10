@@ -34,7 +34,7 @@ ConoHa VPS3 API の全エンドポイントに対応する CLI ツール。
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 0.1.3 | TBD | flavor list UX improvements (see below) |
+| 0.1.3 | TBD | flavor list UX improvements, CONOHA_ENDPOINT support (see below) |
 | 0.1.2 | 2026-03-10 | Bug fixes and feature improvements (see below) |
 | 0.1.1 | 2026-03-10 | UX improvements (see below) |
 | 0.1.0 | 2026-03-10 | Initial implementation - all API endpoints |
@@ -124,11 +124,75 @@ Note: Some flavors may be restricted to prevent abuse. If you cannot use a flavo
 please contact ConoHa support: https://www.conoha.jp/conoha/contact/
 ```
 
+#### 5. `CONOHA_ENDPOINT` environment variable — API endpoint override
+
+**Background**: GMO internal developers and staging/testing environments need to point the CLI
+at a different API endpoint (e.g., internal staging servers) instead of the production
+`https://{service}.{region}.conoha.io`.
+
+**Current behavior**: All API endpoints are constructed from the region:
+```
+Client.BaseURL(service) → https://{service}.{region}.conoha.io
+Authenticate()          → https://identity.{region}.conoha.io/v3/auth/tokens
+```
+
+**After**: If `CONOHA_ENDPOINT` is set, it replaces the base URL scheme+host entirely.
+
+```bash
+# Example: point to staging environment
+export CONOHA_ENDPOINT=https://staging-api.internal.gmo.jp
+
+# This makes all API calls go to:
+#   https://staging-api.internal.gmo.jp/v2.1/servers/detail    (compute)
+#   https://staging-api.internal.gmo.jp/v3/auth/tokens         (identity)
+#   https://staging-api.internal.gmo.jp/v3/{tenant}/volumes    (block-storage)
+#   etc.
+```
+
+**Design**:
+- `CONOHA_ENDPOINT` value is the base URL **without** trailing slash and **without** service prefix
+- When set, `Client.BaseURL(service)` ignores service name and region, returns `CONOHA_ENDPOINT` directly
+- `Authenticate()` also checks `CONOHA_ENDPOINT` and uses it instead of constructing the identity URL
+- This assumes the override endpoint routes all services under one host (reverse proxy pattern)
+- Add `EnvEndpoint = "CONOHA_ENDPOINT"` to `internal/config/env.go`
+
+**Modified files**:
+
+| File | Change |
+|------|--------|
+| `internal/config/env.go` | Add `EnvEndpoint` constant |
+| `internal/api/client.go` | `BaseURL()` checks `CONOHA_ENDPOINT`, returns it if set |
+| `internal/api/auth.go` | `Authenticate()` checks `CONOHA_ENDPOINT` for identity URL |
+| `internal/api/client_test.go` | Test `BaseURL()` with `CONOHA_ENDPOINT` override |
+| `README.md` | Add `CONOHA_ENDPOINT` to environment variables table |
+| `README-en.md` | Same |
+| `README-ko.md` | Same |
+| `CLAUDE.md` | Add `CONOHA_ENDPOINT` to env var list |
+
+**Example test case**:
+```go
+func TestBaseURLWithEndpointOverride(t *testing.T) {
+    t.Setenv("CONOHA_ENDPOINT", "https://staging.internal.gmo.jp")
+    client := NewClient("c3j1", "tok", "tenant1")
+    url := client.BaseURL("compute")
+    expected := "https://staging.internal.gmo.jp"
+    if url != expected {
+        t.Errorf("expected %q, got %q", expected, url)
+    }
+}
+```
+
 #### Modified files summary
 
 | File | Change |
 |------|--------|
 | `cmd/flavor/flavor.go` | Sort, human-readable RAM/DISK, footer message |
+| `internal/config/env.go` | Add `EnvEndpoint` constant |
+| `internal/api/client.go` | `BaseURL()` endpoint override |
+| `internal/api/auth.go` | `Authenticate()` endpoint override |
+| `internal/api/client_test.go` | Endpoint override test |
+| `README.md`, `README-en.md`, `README-ko.md` | Add `CONOHA_ENDPOINT` to env vars |
+| `CLAUDE.md` | Add `CONOHA_ENDPOINT` to env vars |
 
 ### 0.1.2 Changes
 
