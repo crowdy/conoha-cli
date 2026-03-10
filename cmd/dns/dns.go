@@ -57,7 +57,7 @@ func init() {
 	}
 
 	domainShowCmd := &cobra.Command{
-		Use: "show <id>", Short: "Show domain details", Args: cobra.ExactArgs(1),
+		Use: "show <id>", Short: "Show domain details", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -95,7 +95,7 @@ func init() {
 	_ = domainCreateCmd.MarkFlagRequired("email")
 
 	domainDeleteCmd := &cobra.Command{
-		Use: "delete <id>", Short: "Delete a domain", Args: cobra.ExactArgs(1),
+		Use: "delete <id>", Short: "Delete a domain", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -180,7 +180,7 @@ func init() {
 	_ = recordCreateCmd.MarkFlagRequired("data")
 
 	recordDeleteCmd := &cobra.Command{
-		Use: "delete <record-id>", Short: "Delete a record", Args: cobra.ExactArgs(1),
+		Use: "delete <record-id>", Short: "Delete a record", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {

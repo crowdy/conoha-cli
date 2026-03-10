@@ -76,7 +76,7 @@ var createCmd = &cobra.Command{
 var deleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Delete a network",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -153,7 +153,7 @@ func init() {
 	subnetDeleteCmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a subnet",
-		Args:  cobra.ExactArgs(1),
+		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -230,7 +230,7 @@ func init() {
 	portDeleteCmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a port",
-		Args:  cobra.ExactArgs(1),
+		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -285,7 +285,7 @@ func init() {
 	sgShowCmd := &cobra.Command{
 		Use:   "show <id>",
 		Short: "Show security group details",
-		Args:  cobra.ExactArgs(1),
+		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -323,7 +323,7 @@ func init() {
 	sgDeleteCmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a security group",
-		Args:  cobra.ExactArgs(1),
+		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -409,7 +409,7 @@ func init() {
 	sgRuleDeleteCmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a security group rule",
-		Args:  cobra.ExactArgs(1),
+		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {

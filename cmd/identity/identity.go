@@ -42,7 +42,7 @@ func init() {
 	}
 
 	credShowCmd := &cobra.Command{
-		Use: "show <id>", Short: "Show credential details", Args: cobra.ExactArgs(1),
+		Use: "show <id>", Short: "Show credential details", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -57,7 +57,7 @@ func init() {
 	}
 
 	credDeleteCmd := &cobra.Command{
-		Use: "delete <id>", Short: "Delete a credential", Args: cobra.ExactArgs(1),
+		Use: "delete <id>", Short: "Delete a credential", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -100,7 +100,7 @@ func init() {
 	}
 
 	subuserDeleteCmd := &cobra.Command{
-		Use: "delete <id>", Short: "Delete a sub-user", Args: cobra.ExactArgs(1),
+		Use: "delete <id>", Short: "Delete a sub-user", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {

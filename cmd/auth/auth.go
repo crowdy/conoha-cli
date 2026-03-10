@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/config"
 	cerrors "github.com/crowdy/conoha-cli/internal/errors"
@@ -250,7 +251,7 @@ var listCmd = &cobra.Command{
 var switchCmd = &cobra.Command{
 	Use:   "switch <profile>",
 	Short: "Switch active profile",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		cfg, err := config.Load()
@@ -306,7 +307,7 @@ var tokenCmd = &cobra.Command{
 var removeCmd = &cobra.Command{
 	Use:   "remove <profile>",
 	Short: "Completely remove a profile",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 

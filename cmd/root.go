@@ -46,6 +46,9 @@ var rootCmd = &cobra.Command{
 		if flagVerbose {
 			api.SetDebugLevel(api.DebugVerbose)
 		}
+		if flagNoInput {
+			_ = os.Setenv(config.EnvNoInput, "1")
+		}
 	},
 }
 

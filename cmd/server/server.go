@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -11,7 +14,27 @@ import (
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
+
+const (
+	volumePollInterval = 10 * time.Second
+	volumePollTimeout  = 5 * time.Minute
+)
+
+// volumeTypeChoices maps user-friendly names to API volume type values.
+var volumeTypeChoices = []prompt.SelectItem{
+	{Label: "boot-vps-default (c3j1-ds02-boot)", Value: "c3j1-ds02-boot"},
+	{Label: "boot-vps-gpu (c3j1-ds03-boot)", Value: "c3j1-ds03-boot"},
+	{Label: "boot-game-default (c3j1-ds01-boot)", Value: "c3j1-ds01-boot"},
+	{Label: "boot-game-gpu (c3j1-ds03-boot)", Value: "c3j1-ds03-boot"},
+}
+
+var volumeSizeChoices = []prompt.SelectItem{
+	{Label: "100GB (boot volume)", Value: "100"},
+	{Label: "200GB (additional volume)", Value: "200"},
+	{Label: "500GB (additional volume)", Value: "500"},
+}
 
 // Cmd is the server command group.
 var Cmd = &cobra.Command{
@@ -37,12 +60,12 @@ func init() {
 	Cmd.AddCommand(detachVolumeCmd)
 
 	createCmd.Flags().String("name", "", "server name (required)")
-	createCmd.Flags().String("flavor", "", "flavor ID (required)")
-	createCmd.Flags().String("image", "", "image ID")
+	createCmd.Flags().String("flavor", "", "flavor ID (interactive if omitted)")
+	createCmd.Flags().String("image", "", "image ID (interactive if omitted)")
+	createCmd.Flags().String("volume", "", "existing volume ID to use as boot disk")
 	createCmd.Flags().String("key-name", "", "SSH key name")
 	createCmd.Flags().String("admin-pass", "", "admin password")
 	_ = createCmd.MarkFlagRequired("name")
-	_ = createCmd.MarkFlagRequired("flavor")
 
 	rebootCmd.Flags().Bool("hard", false, "perform hard reboot")
 }
@@ -82,6 +105,7 @@ var listCmd = &cobra.Command{
 			Name   string `json:"name"`
 			Status string `json:"status"`
 			Flavor string `json:"flavor"`
+			Tag    string `json:"tag"`
 		}
 		rows := make([]serverRow, len(servers))
 		for i, s := range servers {
@@ -89,7 +113,13 @@ var listCmd = &cobra.Command{
 			if flavorName == "" {
 				flavorName = s.Flavor.ID
 			}
-			rows[i] = serverRow{ID: s.ID, Name: s.Name, Status: s.Status, Flavor: flavorName}
+			rows[i] = serverRow{
+				ID:     s.ID,
+				Name:   s.Name,
+				Status: s.Status,
+				Flavor: flavorName,
+				Tag:    s.Metadata["instance_name_tag"],
+			}
 		}
 
 		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
@@ -99,7 +129,7 @@ var listCmd = &cobra.Command{
 var showCmd = &cobra.Command{
 	Use:   "show <id|name>",
 	Short: "Show server details",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -160,7 +190,7 @@ func printServerDetail(s *model.Server) {
 var renameCmd = &cobra.Command{
 	Use:   "rename <id|name> <new-name>",
 	Short: "Rename a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -183,30 +213,303 @@ var createCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		compute, err := getComputeAPI(cmd)
+		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err
 		}
+		compute := api.NewComputeAPI(client)
 
 		name, _ := cmd.Flags().GetString("name")
 		flavorID, _ := cmd.Flags().GetString("flavor")
 		imageID, _ := cmd.Flags().GetString("image")
+		flagVolumeID, _ := cmd.Flags().GetString("volume")
 		keyName, _ := cmd.Flags().GetString("key-name")
 		adminPass, _ := cmd.Flags().GetString("admin-pass")
 
+		// Resolve flavor (need full struct for volume decision)
+		var flavor *model.Flavor
+		if flavorID != "" {
+			flavor, err = compute.GetFlavor(flavorID)
+			if err != nil {
+				return fmt.Errorf("flavor %q not found: %w", flavorID, err)
+			}
+		} else {
+			flavor, err = selectFlavor(compute)
+			if err != nil {
+				return err
+			}
+		}
+
+		if imageID == "" {
+			imageAPI := api.NewImageAPI(client)
+			imageID, err = selectImage(imageAPI)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Resolve boot volume
+		volumeAPI := api.NewVolumeAPI(client)
+		volumeID, created, err := resolveBootVolume(volumeAPI, flavor, imageID, flagVolumeID)
+		if err != nil {
+			return err
+		}
+
+		// Build request
 		req := &model.ServerCreateRequest{}
 		req.Server.Name = name
-		req.Server.FlavorRef = flavorID
-		req.Server.ImageRef = imageID
+		req.Server.FlavorRef = flavor.ID
 		req.Server.KeyName = keyName
 		req.Server.AdminPass = adminPass
 
+		if volumeID != "" {
+			// Boot from volume: imageRef must be empty
+			req.Server.BlockDeviceMapping = []model.BlockDeviceMapping{
+				{
+					UUID:                volumeID,
+					SourceType:          "volume",
+					DestinationType:     "volume",
+					BootIndex:           0,
+					DeleteOnTermination: false,
+				},
+			}
+		} else {
+			// Dedicated flavor: boot from image directly
+			req.Server.ImageRef = imageID
+		}
+
 		server, err := compute.CreateServer(req)
 		if err != nil {
+			if created {
+				fmt.Fprintf(os.Stderr, "Warning: boot volume %s was created but server creation failed.\n", volumeID)
+				fmt.Fprintf(os.Stderr, "You can delete it with: conoha volume delete %s\n", volumeID)
+			}
 			return err
 		}
 		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, server)
 	},
+}
+
+func selectFlavor(compute *api.ComputeAPI) (*model.Flavor, error) {
+	flavors, err := compute.ListFlavors()
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(flavors, func(i, j int) bool {
+		if flavors[i].VCPUs != flavors[j].VCPUs {
+			return flavors[i].VCPUs < flavors[j].VCPUs
+		}
+		return flavors[i].RAM < flavors[j].RAM
+	})
+	items := make([]prompt.SelectItem, len(flavors))
+	flavorMap := make(map[string]*model.Flavor, len(flavors))
+	for i, f := range flavors {
+		items[i] = prompt.SelectItem{
+			Label: fmt.Sprintf("%s (%d vCPU, %s RAM)", f.Name, f.VCPUs, formatMB(f.RAM)),
+			Value: f.ID,
+		}
+		flavorMap[f.ID] = &flavors[i]
+	}
+	id, err := prompt.Select("Select flavor", items)
+	if err != nil {
+		return nil, err
+	}
+	return flavorMap[id], nil
+}
+
+// flavorNeedsVolume returns true if the flavor requires a boot volume.
+// Flavor naming: g2l-xxx (Linux), g2w-xxx (Windows) need volumes; g2d-xxx (dedicated) does not.
+func flavorNeedsVolume(flavorName string) bool {
+	return len(flavorName) > 2 && flavorName[2] != 'd'
+}
+
+// resolveBootVolume determines the boot volume for server creation.
+// Returns volumeID (empty if not needed), whether a new volume was created, and any error.
+func resolveBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID string, flagVolumeID string) (string, bool, error) {
+	if !flavorNeedsVolume(flavor.Name) {
+		return "", false, nil
+	}
+
+	// --volume flag specified
+	if flagVolumeID != "" {
+		vol, err := volumeAPI.GetVolume(flagVolumeID)
+		if err != nil {
+			return "", false, fmt.Errorf("volume %q not found: %w", flagVolumeID, err)
+		}
+		if vol.Status != "available" {
+			return "", false, fmt.Errorf("volume %s is not available (status: %s)", flagVolumeID, vol.Status)
+		}
+		return flagVolumeID, false, nil
+	}
+
+	// Interactive selection
+	items := []prompt.SelectItem{
+		{Label: "Create new volume", Value: "new"},
+		{Label: "Use existing volume", Value: "existing"},
+	}
+	choice, err := prompt.Select("Boot volume", items)
+	if err != nil {
+		return "", false, err
+	}
+
+	if choice == "new" {
+		return createBootVolume(volumeAPI, imageID)
+	}
+	return selectExistingVolume(volumeAPI)
+}
+
+func createBootVolume(volumeAPI *api.VolumeAPI, imageID string) (string, bool, error) {
+	// Prompt for volume name
+	volName, err := prompt.String("Volume name")
+	if err != nil {
+		return "", false, err
+	}
+	if volName == "" {
+		return "", false, fmt.Errorf("volume name is required")
+	}
+
+	// Prompt for description (optional)
+	volDesc, err := prompt.String("Volume description (optional)")
+	if err != nil {
+		return "", false, err
+	}
+
+	// Prompt for size
+	sizeStr, err := prompt.Select("Volume size", volumeSizeChoices)
+	if err != nil {
+		return "", false, err
+	}
+	var sizeGB int
+	if _, err := fmt.Sscanf(sizeStr, "%d", &sizeGB); err != nil {
+		return "", false, fmt.Errorf("invalid volume size: %w", err)
+	}
+
+	// Prompt for volume type
+	volType, err := prompt.Select("Volume type", volumeTypeChoices)
+	if err != nil {
+		return "", false, err
+	}
+
+	fmt.Fprintf(os.Stderr, "Creating boot volume %q (%dGB, %s)...\n", volName, sizeGB, volType)
+	req := &model.VolumeCreateRequest{}
+	req.Volume.Size = sizeGB
+	req.Volume.Name = volName
+	req.Volume.Description = volDesc
+	req.Volume.VolumeType = volType
+	req.Volume.ImageRef = imageID
+	vol, err := volumeAPI.CreateVolume(req)
+	if err != nil {
+		return "", false, fmt.Errorf("creating boot volume: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Waiting for volume %s to become available...\n", vol.ID)
+	vol, err = waitForVolume(volumeAPI, vol.ID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: boot volume %s was created but may not be ready.\n", vol.ID)
+		fmt.Fprintf(os.Stderr, "You can delete it with: conoha volume delete %s\n", vol.ID)
+		return "", true, err
+	}
+	fmt.Fprintf(os.Stderr, "Volume %s is ready.\n", vol.ID)
+	return vol.ID, true, nil
+}
+
+func selectExistingVolume(volumeAPI *api.VolumeAPI) (string, bool, error) {
+	volumes, err := volumeAPI.ListVolumes()
+	if err != nil {
+		return "", false, err
+	}
+	var available []model.Volume
+	for _, v := range volumes {
+		if v.Status == "available" {
+			available = append(available, v)
+		}
+	}
+	if len(available) == 0 {
+		return "", false, fmt.Errorf("no available volumes found; create one first with: conoha volume create")
+	}
+	items := make([]prompt.SelectItem, len(available))
+	for i, v := range available {
+		label := fmt.Sprintf("%s (%dGB, %s)", v.Name, v.Size, v.Status)
+		if v.Name == "" {
+			label = fmt.Sprintf("%s (%dGB, %s)", v.ID[:8], v.Size, v.Status)
+		}
+		items[i] = prompt.SelectItem{
+			Label: label,
+			Value: v.ID,
+		}
+	}
+	id, err := prompt.Select("Select volume", items)
+	if err != nil {
+		return "", false, err
+	}
+	return id, false, nil
+}
+
+// waitForVolume polls until the volume reaches "available" status.
+// On Ctrl+C, it warns that volume creation continues server-side.
+func waitForVolume(volumeAPI *api.VolumeAPI, id string) (*model.Volume, error) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	deadline := time.Now().Add(volumePollTimeout)
+	for {
+		vol, err := volumeAPI.GetVolume(id)
+		if err != nil {
+			return nil, fmt.Errorf("checking volume status: %w", err)
+		}
+		if vol.Status == "available" {
+			return vol, nil
+		}
+		if vol.Status == "error" {
+			return vol, fmt.Errorf("volume %s entered error state", id)
+		}
+		if time.Now().After(deadline) {
+			return vol, fmt.Errorf("timeout waiting for volume %s (status: %s)", id, vol.Status)
+		}
+		fmt.Fprintf(os.Stderr, "  volume %s status: %s\n", id, vol.Status)
+
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(os.Stderr, "\nInterrupted. Volume creation is still in progress on the server.\n")
+			fmt.Fprintf(os.Stderr, "Check status with: conoha volume show %s\n", id)
+			return vol, fmt.Errorf("interrupted while waiting for volume %s", id)
+		case <-time.After(volumePollInterval):
+		}
+	}
+}
+
+func selectImage(imageAPI *api.ImageAPI) (string, error) {
+	images, err := imageAPI.ListImages()
+	if err != nil {
+		return "", err
+	}
+	var active []model.Image
+	for _, img := range images {
+		if img.Status == "active" {
+			active = append(active, img)
+		}
+	}
+	sort.Slice(active, func(i, j int) bool {
+		return active[i].Name < active[j].Name
+	})
+	items := make([]prompt.SelectItem, len(active))
+	for i, img := range active {
+		items[i] = prompt.SelectItem{
+			Label: img.Name,
+			Value: img.ID,
+		}
+	}
+	return prompt.Select("Select image", items)
+}
+
+func formatMB(mb int) string {
+	if mb == 0 {
+		return "0"
+	}
+	if mb%1024 == 0 {
+		return fmt.Sprintf("%dG", mb/1024)
+	}
+	return fmt.Sprintf("%dM", mb)
 }
 
 // resolveServerID resolves an id-or-name argument to a server ID.
@@ -221,7 +524,7 @@ func resolveServerID(compute *api.ComputeAPI, idOrName string) (string, error) {
 var deleteCmd = &cobra.Command{
 	Use:   "delete <id|name>",
 	Short: "Delete a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -242,7 +545,7 @@ var deleteCmd = &cobra.Command{
 var startCmd = &cobra.Command{
 	Use:   "start <id|name>",
 	Short: "Start a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -263,7 +566,7 @@ var startCmd = &cobra.Command{
 var stopCmd = &cobra.Command{
 	Use:   "stop <id|name>",
 	Short: "Stop a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -284,7 +587,7 @@ var stopCmd = &cobra.Command{
 var rebootCmd = &cobra.Command{
 	Use:   "reboot <id|name>",
 	Short: "Reboot a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -306,7 +609,7 @@ var rebootCmd = &cobra.Command{
 var resizeCmd = &cobra.Command{
 	Use:   "resize <id|name> <flavor-id>",
 	Short: "Resize a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -327,7 +630,7 @@ var resizeCmd = &cobra.Command{
 var rebuildCmd = &cobra.Command{
 	Use:   "rebuild <id|name> <image-id>",
 	Short: "Rebuild a server with a new image",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -348,7 +651,7 @@ var rebuildCmd = &cobra.Command{
 var consoleCmd = &cobra.Command{
 	Use:   "console <id|name>",
 	Short: "Get VNC console URL",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -370,7 +673,7 @@ var consoleCmd = &cobra.Command{
 var ipsCmd = &cobra.Command{
 	Use:   "ips <id|name>",
 	Short: "Show server IP addresses",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -398,7 +701,7 @@ var ipsCmd = &cobra.Command{
 var metadataCmd = &cobra.Command{
 	Use:   "metadata <id|name>",
 	Short: "Show server metadata",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -428,7 +731,7 @@ var metadataCmd = &cobra.Command{
 var attachVolumeCmd = &cobra.Command{
 	Use:   "attach-volume <server-id> <volume-id>",
 	Short: "Attach a volume to a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -445,7 +748,7 @@ var attachVolumeCmd = &cobra.Command{
 var detachVolumeCmd = &cobra.Command{
 	Use:   "detach-volume <server-id> <volume-id>",
 	Short: "Detach a volume from a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
