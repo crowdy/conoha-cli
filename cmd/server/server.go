@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,7 @@ import (
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 // Cmd is the server command group.
@@ -37,12 +39,11 @@ func init() {
 	Cmd.AddCommand(detachVolumeCmd)
 
 	createCmd.Flags().String("name", "", "server name (required)")
-	createCmd.Flags().String("flavor", "", "flavor ID (required)")
-	createCmd.Flags().String("image", "", "image ID")
+	createCmd.Flags().String("flavor", "", "flavor ID (interactive if omitted)")
+	createCmd.Flags().String("image", "", "image ID (interactive if omitted)")
 	createCmd.Flags().String("key-name", "", "SSH key name")
 	createCmd.Flags().String("admin-pass", "", "admin password")
 	_ = createCmd.MarkFlagRequired("name")
-	_ = createCmd.MarkFlagRequired("flavor")
 
 	rebootCmd.Flags().Bool("hard", false, "perform hard reboot")
 }
@@ -82,6 +83,7 @@ var listCmd = &cobra.Command{
 			Name   string `json:"name"`
 			Status string `json:"status"`
 			Flavor string `json:"flavor"`
+			Tag    string `json:"tag"`
 		}
 		rows := make([]serverRow, len(servers))
 		for i, s := range servers {
@@ -89,7 +91,13 @@ var listCmd = &cobra.Command{
 			if flavorName == "" {
 				flavorName = s.Flavor.ID
 			}
-			rows[i] = serverRow{ID: s.ID, Name: s.Name, Status: s.Status, Flavor: flavorName}
+			rows[i] = serverRow{
+				ID:     s.ID,
+				Name:   s.Name,
+				Status: s.Status,
+				Flavor: flavorName,
+				Tag:    s.Metadata["instance_name_tag"],
+			}
 		}
 
 		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
@@ -183,16 +191,32 @@ var createCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		compute, err := getComputeAPI(cmd)
+		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err
 		}
+		compute := api.NewComputeAPI(client)
 
 		name, _ := cmd.Flags().GetString("name")
 		flavorID, _ := cmd.Flags().GetString("flavor")
 		imageID, _ := cmd.Flags().GetString("image")
 		keyName, _ := cmd.Flags().GetString("key-name")
 		adminPass, _ := cmd.Flags().GetString("admin-pass")
+
+		if flavorID == "" {
+			flavorID, err = selectFlavor(compute)
+			if err != nil {
+				return err
+			}
+		}
+
+		if imageID == "" {
+			imageAPI := api.NewImageAPI(client)
+			imageID, err = selectImage(imageAPI)
+			if err != nil {
+				return err
+			}
+		}
 
 		req := &model.ServerCreateRequest{}
 		req.Server.Name = name
@@ -207,6 +231,61 @@ var createCmd = &cobra.Command{
 		}
 		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, server)
 	},
+}
+
+func selectFlavor(compute *api.ComputeAPI) (string, error) {
+	flavors, err := compute.ListFlavors()
+	if err != nil {
+		return "", err
+	}
+	sort.Slice(flavors, func(i, j int) bool {
+		if flavors[i].VCPUs != flavors[j].VCPUs {
+			return flavors[i].VCPUs < flavors[j].VCPUs
+		}
+		return flavors[i].RAM < flavors[j].RAM
+	})
+	items := make([]prompt.SelectItem, len(flavors))
+	for i, f := range flavors {
+		items[i] = prompt.SelectItem{
+			Label: fmt.Sprintf("%s (%d vCPU, %s RAM)", f.Name, f.VCPUs, formatMB(f.RAM)),
+			Value: f.ID,
+		}
+	}
+	return prompt.Select("Select flavor", items)
+}
+
+func selectImage(imageAPI *api.ImageAPI) (string, error) {
+	images, err := imageAPI.ListImages()
+	if err != nil {
+		return "", err
+	}
+	var active []model.Image
+	for _, img := range images {
+		if img.Status == "active" {
+			active = append(active, img)
+		}
+	}
+	sort.Slice(active, func(i, j int) bool {
+		return active[i].Name < active[j].Name
+	})
+	items := make([]prompt.SelectItem, len(active))
+	for i, img := range active {
+		items[i] = prompt.SelectItem{
+			Label: img.Name,
+			Value: img.ID,
+		}
+	}
+	return prompt.Select("Select image", items)
+}
+
+func formatMB(mb int) string {
+	if mb == 0 {
+		return "0"
+	}
+	if mb%1024 == 0 {
+		return fmt.Sprintf("%dG", mb/1024)
+	}
+	return fmt.Sprintf("%dM", mb)
 }
 
 // resolveServerID resolves an id-or-name argument to a server ID.
