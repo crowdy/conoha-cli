@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	iconfig "github.com/crowdy/conoha-cli/internal/config"
 )
 
@@ -49,7 +50,7 @@ var setCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a configuration value",
 	Long:  "Set a configuration value. Keys: format, region",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
 

@@ -62,7 +62,7 @@ var listCmd = &cobra.Command{
 var showCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show volume details",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -106,7 +106,7 @@ var createCmd = &cobra.Command{
 var deleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Delete a volume",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -173,7 +173,7 @@ func init() {
 	backupShowCmd := &cobra.Command{
 		Use:   "show <id>",
 		Short: "Show backup details",
-		Args:  cobra.ExactArgs(1),
+		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -190,7 +190,7 @@ func init() {
 	backupRestoreCmd := &cobra.Command{
 		Use:   "restore <backup-id> <volume-id>",
 		Short: "Restore a backup to a volume",
-		Args:  cobra.ExactArgs(2),
+		Args:  cmdutil.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {

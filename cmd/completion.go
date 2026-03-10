@@ -4,6 +4,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 )
 
 var completionCmd = &cobra.Command{
@@ -21,7 +23,7 @@ Examples:
   # Fish
   conoha completion fish > ~/.config/fish/completions/conoha.fish`,
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
-	Args:                  cobra.ExactArgs(1),
+	Args:                  cmdutil.ExactArgs(1),
 	DisableFlagsInUseLine: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		switch args[0] {

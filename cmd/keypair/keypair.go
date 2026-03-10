@@ -54,7 +54,7 @@ var listCmd = &cobra.Command{
 var createCmd = &cobra.Command{
 	Use:   "create <name>",
 	Short: "Create a keypair",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -79,7 +79,7 @@ var createCmd = &cobra.Command{
 var deleteCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Delete a keypair",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {

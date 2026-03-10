@@ -62,7 +62,7 @@ var listCmd = &cobra.Command{
 var showCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show load balancer details",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -97,7 +97,7 @@ var createCmd = &cobra.Command{
 var deleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Delete a load balancer",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {

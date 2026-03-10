@@ -76,7 +76,7 @@ var listCmd = &cobra.Command{
 var showCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show flavor details",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {

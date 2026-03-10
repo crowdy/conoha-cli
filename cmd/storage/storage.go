@@ -61,7 +61,7 @@ func init() {
 	}
 
 	containerCreateCmd := &cobra.Command{
-		Use: "create <name>", Short: "Create a container", Args: cobra.ExactArgs(1),
+		Use: "create <name>", Short: "Create a container", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -76,7 +76,7 @@ func init() {
 	}
 
 	containerDeleteCmd := &cobra.Command{
-		Use: "delete <name>", Short: "Delete a container", Args: cobra.ExactArgs(1),
+		Use: "delete <name>", Short: "Delete a container", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
@@ -94,7 +94,7 @@ func init() {
 }
 
 var lsCmd = &cobra.Command{
-	Use: "ls <container>", Short: "List objects in a container", Args: cobra.ExactArgs(1),
+	Use: "ls <container>", Short: "List objects in a container", Args: cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -109,7 +109,7 @@ var lsCmd = &cobra.Command{
 }
 
 var cpCmd = &cobra.Command{
-	Use: "cp <src> <dst>", Short: "Copy files to/from object storage", Args: cobra.ExactArgs(2),
+	Use: "cp <src> <dst>", Short: "Copy files to/from object storage", Args: cmdutil.ExactArgs(2),
 	Long: `Copy files between local filesystem and object storage.
 Use container/object format for remote paths.
 
@@ -147,7 +147,7 @@ Examples:
 }
 
 var rmCmd = &cobra.Command{
-	Use: "rm <container/object>", Short: "Remove an object", Args: cobra.ExactArgs(1),
+	Use: "rm <container/object>", Short: "Remove an object", Args: cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -166,7 +166,7 @@ var rmCmd = &cobra.Command{
 }
 
 var publishCmd = &cobra.Command{
-	Use: "publish <container>", Short: "Make a container public", Args: cobra.ExactArgs(1),
+	Use: "publish <container>", Short: "Make a container public", Args: cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
@@ -181,7 +181,7 @@ var publishCmd = &cobra.Command{
 }
 
 var unpublishCmd = &cobra.Command{
-	Use: "unpublish <container>", Short: "Make a container private", Args: cobra.ExactArgs(1),
+	Use: "unpublish <container>", Short: "Make a container private", Args: cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {

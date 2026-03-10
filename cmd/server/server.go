@@ -107,7 +107,7 @@ var listCmd = &cobra.Command{
 var showCmd = &cobra.Command{
 	Use:   "show <id|name>",
 	Short: "Show server details",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -168,7 +168,7 @@ func printServerDetail(s *model.Server) {
 var renameCmd = &cobra.Command{
 	Use:   "rename <id|name> <new-name>",
 	Short: "Rename a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -300,7 +300,7 @@ func resolveServerID(compute *api.ComputeAPI, idOrName string) (string, error) {
 var deleteCmd = &cobra.Command{
 	Use:   "delete <id|name>",
 	Short: "Delete a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -321,7 +321,7 @@ var deleteCmd = &cobra.Command{
 var startCmd = &cobra.Command{
 	Use:   "start <id|name>",
 	Short: "Start a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -342,7 +342,7 @@ var startCmd = &cobra.Command{
 var stopCmd = &cobra.Command{
 	Use:   "stop <id|name>",
 	Short: "Stop a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -363,7 +363,7 @@ var stopCmd = &cobra.Command{
 var rebootCmd = &cobra.Command{
 	Use:   "reboot <id|name>",
 	Short: "Reboot a server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -385,7 +385,7 @@ var rebootCmd = &cobra.Command{
 var resizeCmd = &cobra.Command{
 	Use:   "resize <id|name> <flavor-id>",
 	Short: "Resize a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -406,7 +406,7 @@ var resizeCmd = &cobra.Command{
 var rebuildCmd = &cobra.Command{
 	Use:   "rebuild <id|name> <image-id>",
 	Short: "Rebuild a server with a new image",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -427,7 +427,7 @@ var rebuildCmd = &cobra.Command{
 var consoleCmd = &cobra.Command{
 	Use:   "console <id|name>",
 	Short: "Get VNC console URL",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -449,7 +449,7 @@ var consoleCmd = &cobra.Command{
 var ipsCmd = &cobra.Command{
 	Use:   "ips <id|name>",
 	Short: "Show server IP addresses",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -477,7 +477,7 @@ var ipsCmd = &cobra.Command{
 var metadataCmd = &cobra.Command{
 	Use:   "metadata <id|name>",
 	Short: "Show server metadata",
-	Args:  cobra.ExactArgs(1),
+	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -507,7 +507,7 @@ var metadataCmd = &cobra.Command{
 var attachVolumeCmd = &cobra.Command{
 	Use:   "attach-volume <server-id> <volume-id>",
 	Short: "Attach a volume to a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
@@ -524,7 +524,7 @@ var attachVolumeCmd = &cobra.Command{
 var detachVolumeCmd = &cobra.Command{
 	Use:   "detach-volume <server-id> <volume-id>",
 	Short: "Detach a volume from a server",
-	Args:  cobra.ExactArgs(2),
+	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
 		if err != nil {
