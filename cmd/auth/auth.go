@@ -54,7 +54,11 @@ var loginCmd = &cobra.Command{
 
 		username := config.EnvOr(config.EnvUsername, profile.Username)
 		if username == "" {
-			username, err = prompt.String("API Username")
+			usernameLabel := "API Username"
+			if os.Getenv(config.EnvEndpointMode) == "int" {
+				usernameLabel = "User ID"
+			}
+			username, err = prompt.String(usernameLabel)
 			if err != nil {
 				return err
 			}

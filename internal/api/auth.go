@@ -38,18 +38,29 @@ func Authenticate(region, tenantID, username, password string) (*TokenResult, er
 	}
 	url := baseURL + "/v3/auth/tokens"
 
+	// Internal API requires user.id; external API uses user.name + domain.
+	var userObj map[string]any
+	if os.Getenv(config.EnvEndpointMode) == "int" {
+		userObj = map[string]any{
+			"id":       username,
+			"password": password,
+		}
+	} else {
+		userObj = map[string]any{
+			"name":     username,
+			"password": password,
+			"domain": map[string]any{
+				"id": "default",
+			},
+		}
+	}
+
 	body := map[string]any{
 		"auth": map[string]any{
 			"identity": map[string]any{
 				"methods": []string{"password"},
 				"password": map[string]any{
-					"user": map[string]any{
-						"name":     username,
-						"password": password,
-						"domain": map[string]any{
-							"id": "default",
-						},
-					},
+					"user": userObj,
 				},
 			},
 			"scope": map[string]any{
