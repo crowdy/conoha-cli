@@ -1,16 +1,14 @@
 package model
 
-import "time"
-
 type Volume struct {
-	ID          string    `json:"id" yaml:"id"`
-	Name        string    `json:"name" yaml:"name"`
-	Status      string    `json:"status" yaml:"status"`
-	Size        int       `json:"size" yaml:"size"`
-	VolumeType  string    `json:"volume_type" yaml:"volume_type"`
-	Description string    `json:"description" yaml:"description"`
-	CreatedAt   time.Time `json:"created_at" yaml:"created_at"`
-	Bootable    string    `json:"bootable" yaml:"bootable"`
+	ID          string   `json:"id" yaml:"id"`
+	Name        string   `json:"name" yaml:"name"`
+	Status      string   `json:"status" yaml:"status"`
+	Size        int      `json:"size" yaml:"size"`
+	VolumeType  string   `json:"volume_type" yaml:"volume_type"`
+	Description string   `json:"description" yaml:"description"`
+	CreatedAt   FlexTime `json:"created_at" yaml:"created_at"`
+	Bootable    string   `json:"bootable" yaml:"bootable"`
 }
 
 type VolumesResponse struct {
@@ -42,12 +40,12 @@ type VolumeTypesResponse struct {
 }
 
 type Backup struct {
-	ID        string    `json:"id" yaml:"id"`
-	Name      string    `json:"name" yaml:"name"`
-	Status    string    `json:"status" yaml:"status"`
-	VolumeID  string    `json:"volume_id" yaml:"volume_id"`
-	Size      int       `json:"size" yaml:"size"`
-	CreatedAt time.Time `json:"created_at" yaml:"created_at"`
+	ID        string   `json:"id" yaml:"id"`
+	Name      string   `json:"name" yaml:"name"`
+	Status    string   `json:"status" yaml:"status"`
+	VolumeID  string   `json:"volume_id" yaml:"volume_id"`
+	Size      int      `json:"size" yaml:"size"`
+	CreatedAt FlexTime `json:"created_at" yaml:"created_at"`
 }
 
 type BackupsResponse struct {

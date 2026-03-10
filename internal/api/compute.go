@@ -146,13 +146,16 @@ func (a *ComputeAPI) RebuildServer(id, imageID string) error {
 	})
 }
 
-// GetConsole gets the VNC console URL.
-func (a *ComputeAPI) GetConsole(id string) (*model.ConsoleResponse, error) {
-	url := fmt.Sprintf("%s/servers/%s/action", a.baseURL(), id)
+// GetConsole gets the VNC console URL via remote-consoles endpoint (Nova 2.6+).
+func (a *ComputeAPI) GetConsole(id string) (*model.RemoteConsoleResponse, error) {
+	url := fmt.Sprintf("%s/servers/%s/remote-consoles", a.baseURL(), id)
 	body := map[string]any{
-		"os-getVNCConsole": map[string]string{"type": "novnc"},
+		"remote_console": map[string]string{
+			"protocol": "vnc",
+			"type":     "novnc",
+		},
 	}
-	var resp model.ConsoleResponse
+	var resp model.RemoteConsoleResponse
 	if _, err := a.Client.Post(url, body, &resp); err != nil {
 		return nil, err
 	}
