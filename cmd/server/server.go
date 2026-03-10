@@ -68,14 +68,28 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
+		flavors, err := compute.ListFlavors()
+		if err != nil {
+			return err
+		}
+		flavorMap := make(map[string]string, len(flavors))
+		for _, f := range flavors {
+			flavorMap[f.ID] = f.Name
+		}
+
 		type serverRow struct {
 			ID     string `json:"id"`
 			Name   string `json:"name"`
 			Status string `json:"status"`
+			Flavor string `json:"flavor"`
 		}
 		rows := make([]serverRow, len(servers))
 		for i, s := range servers {
-			rows[i] = serverRow{ID: s.ID, Name: s.Name, Status: s.Status}
+			flavorName := flavorMap[s.Flavor.ID]
+			if flavorName == "" {
+				flavorName = s.Flavor.ID
+			}
+			rows[i] = serverRow{ID: s.ID, Name: s.Name, Status: s.Status, Flavor: flavorName}
 		}
 
 		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
@@ -113,7 +127,7 @@ func printServerDetail(s *model.Server) {
 	fmt.Printf("ID:        %s\n", s.ID)
 	fmt.Printf("Name:      %s\n", s.Name)
 	fmt.Printf("Status:    %s\n", s.Status)
-	fmt.Printf("Flavor:    %s\n", s.FlavorID)
+	fmt.Printf("Flavor:    %s\n", s.Flavor.ID)
 	fmt.Printf("Image:     %s\n", s.ImageID)
 	fmt.Printf("Key Name:  %s\n", s.KeyName)
 	fmt.Printf("Tenant:    %s\n", s.TenantID)
@@ -348,7 +362,7 @@ var consoleCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println(resp.Console.URL)
+		fmt.Println(resp.RemoteConsole.URL)
 		return nil
 	},
 }

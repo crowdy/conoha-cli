@@ -34,8 +34,16 @@ ConoHa VPS3 API の全エンドポイントに対応する CLI ツール。
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.1.2 | 2026-03-10 | Bug fixes and feature improvements (see below) |
 | 0.1.1 | 2026-03-10 | UX improvements (see below) |
 | 0.1.0 | 2026-03-10 | Initial implementation - all API endpoints |
+
+### 0.1.2 Changes
+
+- **Bug fix**: `volume list` タイムスタンプパース失敗を修正 — `FlexTime` カスタム型でタイムゾーンなしフォーマットに対応
+- **Bug fix**: `server console` が `os-getVNCConsole` で失敗する問題を修正 — `POST /servers/{id}/remote-consoles` エンドポイントに変更
+- **Feature**: `server list` に flavor 名カラムを追加 — flavor 一覧を取得して ID→名前をマッピング
+- **Model**: `Server.FlavorID` → `Server.Flavor` (nested `FlavorRef` struct) に変更（OpenStack 標準の `"flavor": {"id": "xxx"}` 形式に対応）
 
 ### 0.1.1 Changes
 

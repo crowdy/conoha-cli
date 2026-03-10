@@ -1,17 +1,19 @@
 package model
 
-import "time"
+type FlavorRef struct {
+	ID string `json:"id"`
+}
 
 type Server struct {
 	ID        string               `json:"id" yaml:"id"`
 	Name      string               `json:"name" yaml:"name"`
 	Status    string               `json:"status" yaml:"status"`
-	FlavorID  string               `json:"flavor_id" yaml:"flavor_id"`
+	Flavor    FlavorRef            `json:"flavor" yaml:"flavor"`
 	ImageID   string               `json:"image_id" yaml:"image_id"`
 	TenantID  string               `json:"tenant_id" yaml:"tenant_id"`
 	KeyName   string               `json:"key_name" yaml:"key_name"`
-	Created   time.Time            `json:"created" yaml:"created"`
-	Updated   time.Time            `json:"updated" yaml:"updated"`
+	Created   FlexTime             `json:"created" yaml:"created"`
+	Updated   FlexTime             `json:"updated" yaml:"updated"`
 	Addresses map[string][]Address `json:"addresses" yaml:"addresses"`
 	Metadata  map[string]string    `json:"metadata" yaml:"metadata"`
 }
@@ -65,6 +67,14 @@ type ConsoleResponse struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
 	} `json:"console"`
+}
+
+type RemoteConsoleResponse struct {
+	RemoteConsole struct {
+		Protocol string `json:"protocol"`
+		Type     string `json:"type"`
+		URL      string `json:"url"`
+	} `json:"remote_console"`
 }
 
 type Keypair struct {
