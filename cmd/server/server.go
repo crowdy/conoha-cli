@@ -131,10 +131,11 @@ var showCmd = &cobra.Command{
 	Short: "Show server details",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		compute, err := getComputeAPI(cmd)
+		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err
 		}
+		compute := api.NewComputeAPI(client)
 		server, err := compute.FindServer(args[0])
 		if err != nil {
 			return err
@@ -145,20 +146,52 @@ var showCmd = &cobra.Command{
 			return output.New(format).Format(os.Stdout, server)
 		}
 
-		// Human-readable key-value output
-		printServerDetail(server)
+		// Resolve flavor name
+		flavorName := server.Flavor.ID
+		if f, err := compute.GetFlavor(server.Flavor.ID); err == nil {
+			flavorName = fmt.Sprintf("%s (%s)", f.Name, f.ID)
+		}
+
+		// Resolve image name
+		imageName := ""
+		imageID := server.ImageID
+		if imageID == "" && len(server.VolumesAttached) > 0 {
+			// Boot from volume: resolve image from the attached volume's metadata
+			volumeAPI := api.NewVolumeAPI(client)
+			if vol, err := volumeAPI.GetVolume(server.VolumesAttached[0].ID); err == nil {
+				if id, ok := vol.VolumeImageMetadata["image_id"]; ok {
+					imageID = id
+				}
+				if name, ok := vol.VolumeImageMetadata["image_name"]; ok && imageID != "" {
+					imageName = fmt.Sprintf("%s (%s)", name, imageID)
+				}
+			}
+		}
+		if imageName == "" && imageID != "" {
+			imageAPI := api.NewImageAPI(client)
+			if img, err := imageAPI.GetImage(imageID); err == nil {
+				imageName = fmt.Sprintf("%s (%s)", img.Name, img.ID)
+			} else {
+				imageName = imageID
+			}
+		}
+
+		printServerDetail(server, flavorName, imageName)
 		return nil
 	},
 }
 
-func printServerDetail(s *model.Server) {
+func printServerDetail(s *model.Server, flavorName, imageName string) {
 	jst := time.FixedZone("JST", 9*60*60)
 
 	fmt.Printf("ID:        %s\n", s.ID)
 	fmt.Printf("Name:      %s\n", s.Name)
+	if tag := s.Metadata["instance_name_tag"]; tag != "" {
+		fmt.Printf("Name Tag:  %s\n", tag)
+	}
 	fmt.Printf("Status:    %s\n", s.Status)
-	fmt.Printf("Flavor:    %s\n", s.Flavor.ID)
-	fmt.Printf("Image:     %s\n", s.ImageID)
+	fmt.Printf("Flavor:    %s\n", flavorName)
+	fmt.Printf("Image:     %s\n", imageName)
 	fmt.Printf("Key Name:  %s\n", s.KeyName)
 	fmt.Printf("Tenant:    %s\n", s.TenantID)
 	fmt.Printf("Created:   %s (%s JST)\n",
@@ -286,7 +319,17 @@ var createCmd = &cobra.Command{
 			}
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, server)
+
+		fmt.Fprintf(os.Stderr, "Server created: %s (ID: %s)\n", name, server.ID)
+		if server.AdminPass != "" {
+			fmt.Fprintf(os.Stderr, "Admin password: %s\n", server.AdminPass)
+		}
+
+		format := cmdutil.GetFormat(cmd)
+		if format != "" && format != "table" {
+			return output.New(format).Format(os.Stdout, server)
+		}
+		return nil
 	},
 }
 

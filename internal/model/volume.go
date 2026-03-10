@@ -1,14 +1,15 @@
 package model
 
 type Volume struct {
-	ID          string   `json:"id" yaml:"id"`
-	Name        string   `json:"name" yaml:"name"`
-	Status      string   `json:"status" yaml:"status"`
-	Size        int      `json:"size" yaml:"size"`
-	VolumeType  string   `json:"volume_type" yaml:"volume_type"`
-	Description string   `json:"description" yaml:"description"`
-	CreatedAt   FlexTime `json:"created_at" yaml:"created_at"`
-	Bootable    string   `json:"bootable" yaml:"bootable"`
+	ID                  string            `json:"id" yaml:"id"`
+	Name                string            `json:"name" yaml:"name"`
+	Status              string            `json:"status" yaml:"status"`
+	Size                int               `json:"size" yaml:"size"`
+	VolumeType          string            `json:"volume_type" yaml:"volume_type"`
+	Description         string            `json:"description" yaml:"description"`
+	CreatedAt           FlexTime          `json:"created_at" yaml:"created_at"`
+	Bootable            string            `json:"bootable" yaml:"bootable"`
+	VolumeImageMetadata map[string]string `json:"volume_image_metadata,omitempty" yaml:"volume_image_metadata,omitempty"`
 }
 
 type VolumesResponse struct {

@@ -4,18 +4,24 @@ type FlavorRef struct {
 	ID string `json:"id"`
 }
 
+type VolumeAttachment struct {
+	ID string `json:"id" yaml:"id"`
+}
+
 type Server struct {
-	ID        string               `json:"id" yaml:"id"`
-	Name      string               `json:"name" yaml:"name"`
-	Status    string               `json:"status" yaml:"status"`
-	Flavor    FlavorRef            `json:"flavor" yaml:"flavor"`
-	ImageID   string               `json:"image_id" yaml:"image_id"`
-	TenantID  string               `json:"tenant_id" yaml:"tenant_id"`
-	KeyName   string               `json:"key_name" yaml:"key_name"`
-	Created   FlexTime             `json:"created" yaml:"created"`
-	Updated   FlexTime             `json:"updated" yaml:"updated"`
-	Addresses map[string][]Address `json:"addresses" yaml:"addresses"`
-	Metadata  map[string]string    `json:"metadata" yaml:"metadata"`
+	ID              string               `json:"id" yaml:"id"`
+	Name            string               `json:"name" yaml:"name"`
+	Status          string               `json:"status" yaml:"status"`
+	Flavor          FlavorRef            `json:"flavor" yaml:"flavor"`
+	ImageID         string               `json:"image_id" yaml:"image_id"`
+	TenantID        string               `json:"tenant_id" yaml:"tenant_id"`
+	KeyName         string               `json:"key_name" yaml:"key_name"`
+	AdminPass       string               `json:"adminPass,omitempty" yaml:"admin_pass,omitempty"`
+	Created         FlexTime             `json:"created" yaml:"created"`
+	Updated         FlexTime             `json:"updated" yaml:"updated"`
+	Addresses       map[string][]Address `json:"addresses" yaml:"addresses"`
+	Metadata        map[string]string    `json:"metadata" yaml:"metadata"`
+	VolumesAttached []VolumeAttachment   `json:"os-extended-volumes:volumes_attached" yaml:"volumes_attached"`
 }
 
 type Address struct {
