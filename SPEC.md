@@ -35,7 +35,7 @@ ConoHa VPS3 API の全エンドポイントに対応する CLI ツール。
 | Version | Date | Description |
 |---------|------|-------------|
 | 0.1.4 | TBD | Version output branding (see below) |
-| 0.1.3 | 2026-03-10 | flavor list UX improvements, CONOHA_ENDPOINT support (see below) |
+| 0.1.3 | 2026-03-10 | flavor list UX, CONOHA_ENDPOINT, CONOHA_ENDPOINT_MODE=int, debug logging (see below) |
 | 0.1.2 | 2026-03-10 | Bug fixes and feature improvements (see below) |
 | 0.1.1 | 2026-03-10 | UX improvements (see below) |
 | 0.1.0 | 2026-03-10 | Initial implementation - all API endpoints |
@@ -294,15 +294,68 @@ User-Agent: crowdy/conoha-cli/{version}
 | File | Change |
 |------|--------|
 | `cmd/flavor/flavor.go` | Sort, human-readable RAM/DISK, footer message |
+| `cmd/auth/auth.go` | Prompt/status label "User ID" in int mode |
 | `cmd/root.go` | Set `api.UserAgent` from version, wire `--verbose` to debug |
-| `internal/config/env.go` | Add `EnvEndpoint`, `EnvDebug` constants |
-| `internal/api/client.go` | `BaseURL()` endpoint override, User-Agent header, debug logging |
-| `internal/api/auth.go` | `Authenticate()` endpoint override, User-Agent header, debug logging |
+| `internal/config/env.go` | Add `EnvEndpoint`, `EnvEndpointMode`, `EnvDebug` constants |
+| `internal/api/client.go` | `BaseURL()` endpoint override + int mode service path/remap, User-Agent, debug |
+| `internal/api/auth.go` | `Authenticate()` endpoint override + int mode `user.id` auth, User-Agent, debug |
 | `internal/api/debug.go` | **New** — debug logger, HTTP logging, sensitive data masking |
 | `internal/api/client_test.go` | Endpoint override test, User-Agent test |
 | `internal/api/debug_test.go` | **New** — masking test, log output test |
-| `README.md`, `README-en.md`, `README-ko.md` | Add `CONOHA_ENDPOINT`, `CONOHA_DEBUG` to env vars |
-| `CLAUDE.md` | Add `CONOHA_ENDPOINT`, `CONOHA_DEBUG` to env vars |
+| `internal/prompt/prompt.go` | Fix errcheck lint for `term.Restore` |
+| `README.md`, `README-en.md`, `README-ko.md` | Add `CONOHA_ENDPOINT`, `CONOHA_ENDPOINT_MODE`, `CONOHA_DEBUG` to env vars |
+| `CLAUDE.md` | Add `CONOHA_ENDPOINT`, `CONOHA_ENDPOINT_MODE`, `CONOHA_DEBUG`, int/ext API differences |
+
+#### 8. `CONOHA_ENDPOINT_MODE=int` — Internal API support
+
+**Background**: The external (public) API uses OpenStack-compatible URL structure with service as subdomain.
+The internal API (used by frontend) uses a single endpoint with service as path segment, and has
+different authentication requirements.
+
+**URL routing differences**:
+
+| Mode | URL pattern |
+|------|-------------|
+| ext (default) | `https://{service}.{region}.conoha.io/{version}/...` |
+| int | `{CONOHA_ENDPOINT}/{service}/{version}/...` |
+
+**Service name remapping** (int mode):
+
+| ext (subdomain) | int (path) |
+|---|---|
+| `image` | `image-service` |
+| `networking` | `network` |
+| others | same name |
+
+**Authentication differences**:
+
+| Field | ext (OpenStack) | int |
+|-------|----------------|-----|
+| User identifier | `user.name` + `user.domain.id` | `user.id` |
+| Password | `user.password` | `user.password` |
+| Project | `scope.project.id` | `scope.project.id` |
+
+Internal API does NOT support `user.name`/`user.domain` — must use `user.id`.
+
+**UX changes in int mode**:
+- `auth login` prompt: "User ID" instead of "API Username"
+- `auth status` output: "User ID" instead of "Username"
+
+**Usage**:
+```bash
+CONOHA_ENDPOINT=http://int-api-host/api \
+CONOHA_ENDPOINT_MODE=int \
+./conoha auth login
+```
+
+**Modified files**:
+
+| File | Change |
+|------|--------|
+| `internal/config/env.go` | Add `EnvEndpointMode` constant |
+| `internal/api/client.go` | `BaseURL()` appends service path + remapping in int mode |
+| `internal/api/auth.go` | `Authenticate()` uses `user.id` in int mode, appends `/identity` |
+| `cmd/auth/auth.go` | Prompt label "User ID" / status label "User ID" in int mode |
 
 ### 0.1.2 Changes
 
