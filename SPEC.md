@@ -182,15 +182,45 @@ func TestBaseURLWithEndpointOverride(t *testing.T) {
 }
 ```
 
+#### 6. Custom `User-Agent` header
+
+**Current**: No User-Agent header is set. Go default `Go-http-client/1.1` is sent.
+
+**After**: All HTTP requests include a custom User-Agent header:
+
+```
+User-Agent: crowdy/conoha-cli/{version}
+```
+
+- `{version}` is the build-time version string from `cmd.version` (e.g., `v0.1.3`)
+- Set in `Client.Do()` so it applies to all API requests
+- Also set in `Authenticate()` which uses its own `http.Client`
+
+**Design**:
+- Add `Version` field to `Client` struct, or pass version via a package-level variable
+- Simpler approach: use a package-level `UserAgent` variable in `internal/api/client.go`,
+  set from `cmd.version` at init time via `api.SetUserAgent()` or similar
+- Format: `crowdy/conoha-cli/{version}` (e.g., `crowdy/conoha-cli/v0.1.3`)
+
+**Modified files**:
+
+| File | Change |
+|------|--------|
+| `internal/api/client.go` | Add `UserAgent` var, set in `Do()` |
+| `internal/api/auth.go` | Set User-Agent in `Authenticate()` |
+| `cmd/root.go` | Set `api.UserAgent` from `version` at init |
+| `internal/api/client_test.go` | Verify User-Agent header |
+
 #### Modified files summary
 
 | File | Change |
 |------|--------|
 | `cmd/flavor/flavor.go` | Sort, human-readable RAM/DISK, footer message |
 | `internal/config/env.go` | Add `EnvEndpoint` constant |
-| `internal/api/client.go` | `BaseURL()` endpoint override |
-| `internal/api/auth.go` | `Authenticate()` endpoint override |
-| `internal/api/client_test.go` | Endpoint override test |
+| `internal/api/client.go` | `BaseURL()` endpoint override, User-Agent header |
+| `internal/api/auth.go` | `Authenticate()` endpoint override, User-Agent header |
+| `internal/api/client_test.go` | Endpoint override test, User-Agent test |
+| `cmd/root.go` | Set `api.UserAgent` from version |
 | `README.md`, `README-en.md`, `README-ko.md` | Add `CONOHA_ENDPOINT` to env vars |
 | `CLAUDE.md` | Add `CONOHA_ENDPOINT` to env vars |
 
