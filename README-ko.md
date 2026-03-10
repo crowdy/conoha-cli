@@ -27,7 +27,29 @@ go install github.com/crowdy/conoha-cli@latest
 
 ### 릴리스 바이너리
 
-[Releases](https://github.com/crowdy/conoha-cli/releases) 페이지에서 다운로드하세요.
+[Releases](https://github.com/crowdy/conoha-cli/releases) 페이지에서 다운로드하거나, 아래 명령어를 사용하세요:
+
+**Linux (amd64)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-linux-amd64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**macOS (Apple Silicon)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-darwin-arm64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**Windows (amd64)**
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-windows-amd64.exe -OutFile conoha.exe
+```
 
 ## 빠른 시작
 

@@ -27,7 +27,29 @@ go install github.com/crowdy/conoha-cli@latest
 
 ### Release binaries
 
-Download from the [Releases](https://github.com/crowdy/conoha-cli/releases) page.
+Download from the [Releases](https://github.com/crowdy/conoha-cli/releases) page, or use the commands below:
+
+**Linux (amd64)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-linux-amd64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**macOS (Apple Silicon)**
+
+```bash
+curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-darwin-arm64
+chmod +x conoha
+sudo mv conoha /usr/local/bin/
+```
+
+**Windows (amd64)**
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-windows-amd64.exe -OutFile conoha.exe
+```
 
 ## Quick Start
 
