@@ -44,7 +44,9 @@ func (f *TableFormatter) Format(w io.Writer, data any) error {
 		}
 		headers[i] = strings.ToUpper(name)
 	}
-	fmt.Fprintln(tw, strings.Join(headers, "\t"))
+	if _, err := fmt.Fprintln(tw, strings.Join(headers, "\t")); err != nil {
+		return err
+	}
 
 	// Write rows
 	for i := 0; i < val.Len(); i++ {
@@ -56,7 +58,9 @@ func (f *TableFormatter) Format(w io.Writer, data any) error {
 		for j := 0; j < row.NumField(); j++ {
 			fields[j] = fmt.Sprintf("%v", row.Field(j).Interface())
 		}
-		fmt.Fprintln(tw, strings.Join(fields, "\t"))
+		if _, err := fmt.Fprintln(tw, strings.Join(fields, "\t")); err != nil {
+			return err
+		}
 	}
 
 	return tw.Flush()

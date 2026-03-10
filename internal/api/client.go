@@ -40,6 +40,8 @@ func (c *Client) BaseURL(service string) string {
 }
 
 // Do executes an HTTP request with auth headers and error handling.
+// Note: retries only work for requests without a body (GET/DELETE).
+// POST/PUT with a body are not retried because the body is consumed on first attempt.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	if c.Token != "" {
 		req.Header.Set("X-Auth-Token", c.Token)
@@ -58,18 +60,26 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			if attempt == maxRetries {
 				return nil, &cerrors.NetworkError{Err: err}
 			}
+			// Only retry if body is nil (GET/DELETE) or body supports seeking
+			if req.Body != nil {
+				return nil, &cerrors.NetworkError{Err: err}
+			}
 			time.Sleep(time.Duration(attempt+1) * time.Second)
 			continue
 		}
-		// Retry on 429 or 5xx
+		// Retry on 429 or 5xx (only for bodyless requests)
 		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
-			if attempt < maxRetries {
+			if attempt < maxRetries && req.Body == nil {
 				resp.Body.Close()
 				time.Sleep(time.Duration(attempt+1) * time.Second)
 				continue
 			}
 		}
 		break
+	}
+
+	if resp == nil {
+		return nil, &cerrors.NetworkError{Err: fmt.Errorf("no response after retries")}
 	}
 
 	if resp.StatusCode >= 400 {
@@ -118,9 +128,9 @@ func (c *Client) Post(url string, body, result any) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	if result != nil {
-		defer resp.Body.Close()
 		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
 			return resp, err
 		}

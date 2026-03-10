@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/output"
@@ -32,18 +33,24 @@ func init() {
 	Cmd.AddCommand(metadataCmd)
 	Cmd.AddCommand(attachVolumeCmd)
 	Cmd.AddCommand(detachVolumeCmd)
+
+	createCmd.Flags().String("name", "", "server name (required)")
+	createCmd.Flags().String("flavor", "", "flavor ID (required)")
+	createCmd.Flags().String("image", "", "image ID")
+	createCmd.Flags().String("key-name", "", "SSH key name")
+	createCmd.Flags().String("admin-pass", "", "admin password")
+	_ = createCmd.MarkFlagRequired("name")
+	_ = createCmd.MarkFlagRequired("flavor")
+
+	rebootCmd.Flags().Bool("hard", false, "perform hard reboot")
 }
 
 func getComputeAPI(cmd *cobra.Command) (*api.ComputeAPI, error) {
-	client, err := getClient(cmd)
+	client, err := cmdutil.NewClient(cmd)
 	if err != nil {
 		return nil, err
 	}
 	return api.NewComputeAPI(client), nil
-}
-
-func getClient(cmd *cobra.Command) (*api.Client, error) {
-	return initClient(cmd)
 }
 
 var listCmd = &cobra.Command{
@@ -59,11 +66,6 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		format, _ := cmd.Flags().GetString("format")
-		if format == "" {
-			format = "table"
-		}
-
 		type serverRow struct {
 			ID     string `json:"id"`
 			Name   string `json:"name"`
@@ -74,7 +76,7 @@ var listCmd = &cobra.Command{
 			rows[i] = serverRow{ID: s.ID, Name: s.Name, Status: s.Status}
 		}
 
-		return output.New(format).Format(os.Stdout, rows)
+		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
 	},
 }
 
@@ -91,12 +93,7 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		format, _ := cmd.Flags().GetString("format")
-		if format == "" {
-			format = "json"
-		}
-		return output.New(format).Format(os.Stdout, server)
+		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, server)
 	},
 }
 
@@ -126,12 +123,7 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		format, _ := cmd.Flags().GetString("format")
-		if format == "" {
-			format = "json"
-		}
-		return output.New(format).Format(os.Stdout, server)
+		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, server)
 	},
 }
 
@@ -269,12 +261,7 @@ var ipsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		format, _ := cmd.Flags().GetString("format")
-		if format == "" {
-			format = "json"
-		}
-		return output.New(format).Format(os.Stdout, server.Addresses)
+		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, server.Addresses)
 	},
 }
 
@@ -291,12 +278,7 @@ var metadataCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		format, _ := cmd.Flags().GetString("format")
-		if format == "" {
-			format = "json"
-		}
-		return output.New(format).Format(os.Stdout, meta)
+		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, meta)
 	},
 }
 
@@ -332,16 +314,4 @@ var detachVolumeCmd = &cobra.Command{
 		fmt.Fprintf(os.Stderr, "Volume %s detached from server %s\n", args[1], args[0])
 		return nil
 	},
-}
-
-func init() {
-	createCmd.Flags().String("name", "", "server name (required)")
-	createCmd.Flags().String("flavor", "", "flavor ID (required)")
-	createCmd.Flags().String("image", "", "image ID")
-	createCmd.Flags().String("key-name", "", "SSH key name")
-	createCmd.Flags().String("admin-pass", "", "admin password")
-	_ = createCmd.MarkFlagRequired("name")
-	_ = createCmd.MarkFlagRequired("flavor")
-
-	rebootCmd.Flags().Bool("hard", false, "perform hard reboot")
 }

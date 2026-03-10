@@ -3,15 +3,15 @@ package model
 import "time"
 
 type Server struct {
-	ID        string    `json:"id" yaml:"id"`
-	Name      string    `json:"name" yaml:"name"`
-	Status    string    `json:"status" yaml:"status"`
-	FlavorID  string    `json:"flavor_id" yaml:"flavor_id"`
-	ImageID   string    `json:"image_id" yaml:"image_id"`
-	TenantID  string    `json:"tenant_id" yaml:"tenant_id"`
-	KeyName   string    `json:"key_name" yaml:"key_name"`
-	Created   time.Time `json:"created" yaml:"created"`
-	Updated   time.Time `json:"updated" yaml:"updated"`
+	ID        string               `json:"id" yaml:"id"`
+	Name      string               `json:"name" yaml:"name"`
+	Status    string               `json:"status" yaml:"status"`
+	FlavorID  string               `json:"flavor_id" yaml:"flavor_id"`
+	ImageID   string               `json:"image_id" yaml:"image_id"`
+	TenantID  string               `json:"tenant_id" yaml:"tenant_id"`
+	KeyName   string               `json:"key_name" yaml:"key_name"`
+	Created   time.Time            `json:"created" yaml:"created"`
+	Updated   time.Time            `json:"updated" yaml:"updated"`
 	Addresses map[string][]Address `json:"addresses" yaml:"addresses"`
 	Metadata  map[string]string    `json:"metadata" yaml:"metadata"`
 }
@@ -32,14 +32,14 @@ type ServersResponse struct {
 
 type ServerCreateRequest struct {
 	Server struct {
-		Name             string            `json:"name"`
-		FlavorRef        string            `json:"flavorRef"`
-		ImageRef         string            `json:"imageRef,omitempty"`
-		KeyName          string            `json:"key_name,omitempty"`
-		SecurityGroups   []SecurityGroupRef `json:"security_groups,omitempty"`
+		Name               string               `json:"name"`
+		FlavorRef          string               `json:"flavorRef"`
+		ImageRef           string               `json:"imageRef,omitempty"`
+		KeyName            string               `json:"key_name,omitempty"`
+		SecurityGroups     []SecurityGroupRef   `json:"security_groups,omitempty"`
 		BlockDeviceMapping []BlockDeviceMapping `json:"block_device_mapping_v2,omitempty"`
-		AdminPass        string            `json:"adminPass,omitempty"`
-		Metadata         map[string]string `json:"metadata,omitempty"`
+		AdminPass          string               `json:"adminPass,omitempty"`
+		Metadata           map[string]string    `json:"metadata,omitempty"`
 	} `json:"server"`
 }
 

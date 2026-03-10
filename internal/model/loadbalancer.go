@@ -37,10 +37,10 @@ type PoolsResponse struct {
 }
 
 type Member struct {
-	ID            string `json:"id" yaml:"id"`
-	Address       string `json:"address" yaml:"address"`
-	ProtocolPort  int    `json:"protocol_port" yaml:"protocol_port"`
-	Weight        int    `json:"weight" yaml:"weight"`
+	ID              string `json:"id" yaml:"id"`
+	Address         string `json:"address" yaml:"address"`
+	ProtocolPort    int    `json:"protocol_port" yaml:"protocol_port"`
+	Weight          int    `json:"weight" yaml:"weight"`
 	OperatingStatus string `json:"operating_status" yaml:"operating_status"`
 }
 
@@ -49,12 +49,12 @@ type MembersResponse struct {
 }
 
 type HealthMonitor struct {
-	ID          string `json:"id" yaml:"id"`
-	Type        string `json:"type" yaml:"type"`
-	Delay       int    `json:"delay" yaml:"delay"`
-	Timeout     int    `json:"timeout" yaml:"timeout"`
-	MaxRetries  int    `json:"max_retries" yaml:"max_retries"`
-	PoolID      string `json:"pool_id" yaml:"pool_id"`
+	ID         string `json:"id" yaml:"id"`
+	Type       string `json:"type" yaml:"type"`
+	Delay      int    `json:"delay" yaml:"delay"`
+	Timeout    int    `json:"timeout" yaml:"timeout"`
+	MaxRetries int    `json:"max_retries" yaml:"max_retries"`
+	PoolID     string `json:"pool_id" yaml:"pool_id"`
 }
 
 type HealthMonitorsResponse struct {

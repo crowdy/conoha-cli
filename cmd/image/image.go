@@ -36,10 +36,10 @@ var listCmd = &cobra.Command{
 		}
 
 		type row struct {
-			ID     string `json:"id"`
-			Name   string `json:"name"`
-			Status string `json:"status"`
-			MinDisk int   `json:"min_disk"`
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Status  string `json:"status"`
+			MinDisk int    `json:"min_disk"`
 		}
 		rows := make([]row, len(images))
 		for i, img := range images {

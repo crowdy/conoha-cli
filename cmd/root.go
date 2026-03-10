@@ -35,9 +35,9 @@ var (
 
 // rootCmd is the base command.
 var rootCmd = &cobra.Command{
-	Use:   "conoha",
-	Short: "ConoHa VPS3 CLI",
-	Long:  "Command-line interface for ConoHa VPS3 API",
+	Use:           "conoha",
+	Short:         "ConoHa VPS3 CLI",
+	Long:          "Command-line interface for ConoHa VPS3 API",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }

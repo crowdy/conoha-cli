@@ -1,10 +1,10 @@
 package model
 
 type Credential struct {
-	ID      string `json:"id" yaml:"id"`
-	Type    string `json:"type" yaml:"type"`
-	UserID  string `json:"user_id" yaml:"user_id"`
-	Blob    string `json:"blob" yaml:"blob"`
+	ID     string `json:"id" yaml:"id"`
+	Type   string `json:"type" yaml:"type"`
+	UserID string `json:"user_id" yaml:"user_id"`
+	Blob   string `json:"blob" yaml:"blob"`
 }
 
 type CredentialsResponse struct {

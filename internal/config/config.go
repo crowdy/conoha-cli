@@ -68,7 +68,7 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
-	return os.WriteFile(filepath.Join(dir, configFile), data, 0644)
+	return os.WriteFile(filepath.Join(dir, configFile), data, 0600)
 }
 
 func (c *Config) ActiveProfileConfig() Profile {
