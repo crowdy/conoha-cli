@@ -33,5 +33,5 @@ func (t FlexTime) MarshalJSON() ([]byte, error) {
 	if t.IsZero() {
 		return []byte(`""`), nil
 	}
-	return []byte(`"` + t.Time.Format(time.RFC3339) + `"`), nil
+	return []byte(`"` + t.Format(time.RFC3339) + `"`), nil
 }
