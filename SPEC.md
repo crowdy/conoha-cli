@@ -34,7 +34,7 @@ ConoHa VPS3 API の全エンドポイントに対応する CLI ツール。
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 0.1.4 | TBD | Version output branding (see below) |
+| 0.1.4 | TBD | Version branding, server list name tag, interactive flavor/image picker (see below) |
 | 0.1.3 | 2026-03-10 | flavor list UX, CONOHA_ENDPOINT, CONOHA_ENDPOINT_MODE=int, debug logging (see below) |
 | 0.1.2 | 2026-03-10 | Bug fixes and feature improvements (see below) |
 | 0.1.1 | 2026-03-10 | UX improvements (see below) |
@@ -57,6 +57,107 @@ This is an unofficial tool and is not affiliated with or endorsed by ConoHa/GMO 
 
 **Modified files**:
 - `cmd/version.go` — update version output format
+
+#### 2. `server list`: Show name tag from metadata
+
+**Current**: `server list` shows ID, Name, Status, Flavor columns only.
+
+**After**: Add a TAG column that displays the value of `metadata["instance_name_tag"]` if present.
+
+ConoHa VPS uses `instance_name_tag` metadata key to store user-defined display names
+(set via the control panel). This is distinct from the OpenStack server `name` field.
+
+**Current output**:
+```
+ID                                    NAME                  STATUS  FLAVOR
+xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  vps-xxxxxxxx          ACTIVE  g2l-t-c2m1
+```
+
+**After**:
+```
+ID                                    NAME                  STATUS  FLAVOR          TAG
+xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  vps-xxxxxxxx          ACTIVE  g2l-t-c2m1      my-web-server
+```
+
+- TAG column shows empty string if `instance_name_tag` is not set
+- No model changes needed — `Server.Metadata` (`map[string]string`) already captures this
+
+**Modified files**:
+- `cmd/server/server.go` — add `Tag` field to `serverRow`, populate from `Metadata["instance_name_tag"]`
+
+#### 3. `server create`: Interactive flavor/image picker
+
+**Background**: `server create` requires `--flavor` (flavor ID) and optionally `--image` (image ID).
+Users must look up UUIDs separately with `flavor list` / `image list` before creating a server.
+
+**After**: When `--flavor` or `--image` is not provided **and** stdin is a TTY, show an interactive
+selection list. If stdin is not a TTY (piped/scripted), error with a message requiring the flag.
+
+**UX flow**:
+```bash
+$ conoha server create --name my-server
+# --flavor not provided, TTY detected → show flavor picker
+
+Select flavor:
+  Use ↑/↓ to move, type to filter, Enter to select
+
+  > g2l-t-c1m512  (1 vCPU, 512M)
+    g2l-t-c2m1    (2 vCPU, 1G)
+    g2l-t-c4m2    (4 vCPU, 2G)
+    g2l-t-c4m4    (4 vCPU, 4G)
+    ...
+
+# After flavor selected, if --image not provided → show image picker
+
+Select image:
+  > vmi-ubuntu-24.04-amd64
+    vmi-rocky-9-amd64
+    vmi-debian-12-amd64
+    ...
+```
+
+**Design**:
+- Use `promptui` library (`github.com/manifoldco/promptui`) — lightweight, stable, supports
+  arrow-key selection with search/filter. Good fit for cobra-based CLIs.
+- TTY detection: `golang.org/x/term` `term.IsTerminal(int(os.Stdin.Fd()))`
+- If not TTY and flag missing → return error: `"--flavor is required (or run interactively in a terminal)"`
+- Flavor list sorted by VCPUS/RAM (reuse 0.1.3 sort logic), displayed as `name (N vCPU, RAM)`
+- Image list filtered to active images only, sorted by name
+- `--no-input` flag also disables interactive picker (same as auth login)
+- Remove `MarkFlagRequired` for `--flavor` (now conditionally required)
+
+**Reference**: This follows the same pattern as GitHub CLI (`gh pr create`) — prompt interactively
+when TTY, require flags when scripted. AWS CLI does not do this natively but companion tools
+like `aws-simple-ec2-cli` and `amazon-ec2-instance-selector` provide interactive selection.
+Google Cloud CLI (`gcloud`) prompts for zone selection when missing.
+
+**Modified files**:
+
+| File | Change |
+|------|--------|
+| `go.mod` / `go.sum` | Add `github.com/manifoldco/promptui` dependency |
+| `internal/prompt/select.go` | **New** — `Select(label string, items []string) (int, error)` using promptui |
+| `cmd/server/server.go` | `createCmd`: remove `MarkFlagRequired("flavor")`, add interactive picker logic |
+
+**Example implementation sketch**:
+```go
+// internal/prompt/select.go
+func Select(label string, items []string) (int, error) {
+    if config.IsNoInput() || !term.IsTerminal(int(os.Stdin.Fd())) {
+        return -1, fmt.Errorf("selection required but interactive input is not available")
+    }
+    prompt := promptui.Select{
+        Label: label,
+        Items: items,
+        Size:  15,
+        Searcher: func(input string, index int) bool {
+            return strings.Contains(strings.ToLower(items[index]), strings.ToLower(input))
+        },
+    }
+    idx, _, err := prompt.Run()
+    return idx, err
+}
+```
 
 ### 0.1.3 Changes
 
