@@ -83,6 +83,35 @@ Currently private key is only returned in the create response but not saved.
 - Set file permissions to 0600
 - Print saved path to stderr
 
+### `server create` Startup Script (`user_data`)
+
+ConoHa VPS3 supports startup scripts via the `user_data` parameter in server create API.
+No API exists for managing/listing saved scripts -- users provide their own script files.
+
+API details:
+- Parameter: `server.user_data` (base64-encoded)
+- Max size: 16 KiB (before encoding)
+- Supported headers: `#!`, `#cloud-config`, `#cloud-boothook`, `#include`, `#include-once`
+- Linux only (Windows Server not supported)
+
+CLI flags:
+- `--user-data <file>`: read file, validate size, base64-encode, send as `user_data`
+- `--user-data-raw <string>`: encode string directly (for simple one-liners)
+- `--user-data-url <url>`: wrap as `#include` directive and encode
+- Error if > 16 KiB, warn if Windows flavor selected
+
+Control panel supports 3 methods (CLI should match):
+1. File (`--user-data`) -- equivalent to "テキスト入力"
+2. Raw string (`--user-data-raw`) -- for one-liners
+3. URL (`--user-data-url`) -- equivalent to "URL指定", wraps as `#include <url>`
+
+References:
+- https://support.conoha.jp/v/startupscript/
+- https://vps.conoha.jp/function/startupscript/
+- https://doc.conoha.jp/products/vps-v3/startupscripts-v3/
+
+Model change: add `UserData string` to `ServerCreateRequest.Server`
+
 ### Split server.go (~806 lines -> 5-6 files)
 
 - `server.go` -- Cmd, init(), helpers
@@ -164,3 +193,38 @@ Flags: `--user` / `-l`, `--port` / `-p`, `--identity` / `-i` (override key path)
 - Increase unit test coverage (target 50%+)
 - GitHub Actions CI: test + lint on push/PR
 - goreleaser automated releases
+
+---
+
+## v0.2.1: `server deploy` Command
+
+SSH-based deployment command, built on top of `server ssh` (v0.1.8).
+Designed as a simple building block that AI agents can compose for full deployment pipelines.
+
+```
+conoha server deploy <server> --script deploy.sh
+conoha server deploy <server> --script deploy.sh --env APP_ENV=production
+```
+
+- Connect to server via SSH (reuse `server ssh` infrastructure)
+- Upload and execute a deployment script on the remote server
+- `--script <file>`: local script to upload and run
+- `--env KEY=VALUE`: pass environment variables to the script (repeatable)
+- Stream stdout/stderr in real-time
+- Exit with remote script's exit code
+
+### AI Agent Workflow Example
+
+An AI agent can compose the full pipeline using existing commands:
+1. `conoha server create --user-data init.sh` -- create VPS with initial setup
+2. `conoha server ssh <server> "apt install -y docker.io"` -- install dependencies
+3. `conoha server deploy <server> --script deploy.sh` -- deploy application
+
+No need for built-in app detection or framework support -- the agent generates
+appropriate scripts based on project type (Rails, Laravel, Django, static, etc.).
+
+References:
+- Kamal: Docker + SSH deploy (https://kamal-deploy.org/)
+- Dokku: git push-based self-hosted PaaS (https://dokku.com/)
+- az webapp up: simplest PaaS deploy (one command)
+- gcloud run deploy --source: auto-buildpack + container
