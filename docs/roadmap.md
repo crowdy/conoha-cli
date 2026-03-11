@@ -69,6 +69,20 @@ Modify `internal/prompt/prompt.go`:
 - storage container delete, storage rm
 - identity credential/subuser delete
 
+### `server create` Keypair Selection
+
+Currently `--key-name` flag exists but there is no interactive prompt when omitted.
+- If `--key-name` not specified, list keypairs and let user select interactively
+- Skip if no keypairs exist (proceed without key)
+
+### `keypair create` Private Key Save
+
+Currently private key is only returned in the create response but not saved.
+- Save private key to file on creation (default: `~/.ssh/conoha_<name>`)
+- `--output` / `-o` flag to specify output path
+- Set file permissions to 0600
+- Print saved path to stderr
+
 ### Split server.go (~806 lines -> 5-6 files)
 
 - `server.go` -- Cmd, init(), helpers
@@ -86,6 +100,26 @@ Modify `internal/prompt/prompt.go`:
 - `--sort-by field` -- sorting for list commands
 - `--no-headers` -- remove table headers (for scripting)
 - `--no-color` actual implementation (flag exists but unused)
+- Command aliases: `network sg` -> `security-group`, `network sgr` -> `security-group-rule`
+- Human-readable byte sizes in table output (e.g. `1.4 GB` instead of `1538800161`), applies to `storage container list` etc.
+- `image list`: add visibility column (public/private) to output
+- `storage publish`: show public URL after publishing (e.g. `https://object-storage.c3j1.conoha.io/v1/AUTH_{tenant}/{container}`)
+- `storage cp --recursive` / `-r`: upload/download directories recursively (currently single file only)
+
+### `server show` Enhancements
+
+#### Volume Info
+
+`conoha server show <id>` output should include attached volume information (at minimum: volume ID, size).
+- Call volume attachment API (`GET /servers/{id}/os-volume_attachments`) to get attached volume IDs
+- Call volume detail API (`GET /volumes/{id}`) for each to get size
+- Display in server show output: volume ID, size (GB), device path
+
+#### Port / IP Info
+
+Show port and IP information alongside addresses.
+- Call port list API (`GET /ports?device_id={server_id}`) to get ports attached to the server
+- Display: IP address, port ID, MAC address, security groups
 
 ---
 
@@ -96,15 +130,32 @@ Modify `internal/prompt/prompt.go`:
 - volume create (until available)
 - Extract existing `waitForVolume()` pattern into `cmdutil.WaitFor()` shared helper
 
+### `server ssh` Command
+
+SSH into a server via system `ssh` command (like `gcloud compute ssh`, `az ssh vm`).
+- Get server IP and key_name from server detail API
+- Resolve private key path (`~/.ssh/conoha_<key_name>`, requires v0.1.6 keypair save)
+- Execute system `ssh` via `os.Exec`
+
+```
+conoha server ssh <server>              # ssh root@<ip> -i ~/.ssh/conoha_<key>
+conoha server ssh <server> "ls -la"     # remote command execution
+conoha server ssh <server> -l ubuntu    # specify user
+conoha server ssh <server> -p 2222      # specify port
+```
+
+Flags: `--user` / `-l`, `--port` / `-p`, `--identity` / `-i` (override key path)
+
 ---
 
-## v0.1.9: Load Balancer CLI Completion
+## v0.1.9: Load Balancer CLI Completion + Image Upload
 
 - listener create/show/delete
 - pool create/show/delete
 - member create/show/delete
 - healthmonitor create/show/delete
 - Add API/model + split cmd/lb/ files
+- `image upload` command (API details TBD)
 
 ---
 
