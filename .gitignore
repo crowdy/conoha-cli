@@ -26,6 +26,9 @@ coverage.html
 credentials.yaml
 tokens.yaml
 
+# Business docs (internal)
+docs/business/
+
 # Claude Code
 .claude/
 CLAUDE.md
