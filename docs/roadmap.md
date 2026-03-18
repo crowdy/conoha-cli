@@ -28,7 +28,7 @@ Modify `internal/prompt/prompt.go`:
 
 | Command | Confirmation Message |
 |---------|---------------------|
-| `server create` | Show creation summary then confirm (name, flavor, image, volume, key) |
+| `server create` | Show creation summary then confirm |
 | `server delete` | `Delete server "name" (ID)? This cannot be undone.` |
 | `server rebuild` | `Rebuild server? All data will be lost.` |
 | `server resize` | `Resize server? This may cause downtime.` |
@@ -49,6 +49,30 @@ Modify `internal/prompt/prompt.go`:
 | `cmd/lb/lb.go` | delete confirmation |
 | `internal/prompt/prompt_test.go` | Confirm() tests (--yes, --no-input) |
 
+### `server create` Confirmation Summary
+
+Before creating, display a summary and ask for confirmation:
+
+```
+=== Server Create Summary ===
+  Name:     my-server
+  Flavor:   g2l-t-c2m1 (2 vCPU, 1 GB RAM)
+  Image:    vmi-ubuntu-22.04-amd64
+  Volume:   100 GB (c3j1-ds02-boot) [new]
+  Key:      my-keypair
+  Password: (set)
+
+Create this server? [y/N]
+```
+
+Fields:
+- **Name**: `--name` value
+- **Flavor**: name + vCPU/RAM spec
+- **Image**: image name (resolve from ID via API)
+- **Volume**: size + type + `[new]`/`[existing]`, or `(none)` for dedicated flavors
+- **Key**: key name, or `(none)` if not specified
+- **Password**: `(set)` or `(none)`
+
 ### Verification
 
 1. `conoha server delete <id>` -> confirmation prompt, N cancels
@@ -59,7 +83,7 @@ Modify `internal/prompt/prompt.go`:
 
 ---
 
-## v0.1.6: Remaining Confirmations + Code Splitting
+## v0.1.6: Remaining Confirmations + Keypair
 
 ### Additional Delete Confirmations
 
@@ -82,6 +106,10 @@ Currently private key is only returned in the create response but not saved.
 - `--output` / `-o` flag to specify output path
 - Set file permissions to 0600
 - Print saved path to stderr
+
+---
+
+## v0.1.7: Startup Script + Code Splitting
 
 ### `server create` Startup Script (`user_data`)
 
@@ -112,7 +140,7 @@ References:
 
 Model change: add `UserData string` to `ServerCreateRequest.Server`
 
-### Split server.go (~806 lines -> 5-6 files)
+### Split server.go (~763 lines -> 5-6 files)
 
 - `server.go` -- Cmd, init(), helpers
 - `list.go` -- listCmd, showCmd
@@ -123,7 +151,7 @@ Model change: add `UserData string` to `ServerCreateRequest.Server`
 
 ---
 
-## v0.1.7: List UX Improvements
+## v0.1.8: List UX Improvements
 
 - `--filter key=value` -- filtering for list commands
 - `--sort-by field` -- sorting for list commands
@@ -152,7 +180,7 @@ Show port and IP information alongside addresses.
 
 ---
 
-## v0.1.8: `--wait` for Async Operations
+## v0.1.9: `--wait` for Async Operations
 
 - `--wait` / `--wait-timeout` -- wait for async operation completion
 - server create (until ACTIVE), delete (until 404), start/stop/reboot
@@ -177,7 +205,7 @@ Flags: `--user` / `-l`, `--port` / `-p`, `--identity` / `-i` (override key path)
 
 ---
 
-## v0.1.9: Load Balancer CLI Completion + Image Upload
+## v0.1.10: Load Balancer CLI Completion + Image Upload
 
 - listener create/show/delete
 - pool create/show/delete
@@ -190,15 +218,44 @@ Flags: `--user` / `-l`, `--port` / `-p`, `--identity` / `-i` (override key path)
 
 ## v0.2.0: Testing & CI/CD
 
-- Increase unit test coverage (target 50%+)
-- GitHub Actions CI: test + lint on push/PR
-- goreleaser automated releases
+### Unit Tests
+
+- Target: 50%+ coverage
+- Priority areas: `internal/api/` (HTTP client, request building), `internal/config/` (config loading, env vars), `internal/output/` (formatters), `cmd/` (flag parsing, validation)
+- Use `httptest.Server` for API tests (mock HTTP responses, not Go interfaces)
+- `go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out`
+
+### GitHub Actions CI
+
+Workflow: `.github/workflows/ci.yml`
+
+Triggers: push to `main`, pull requests
+
+Jobs:
+- **test**: `go test ./...` on Go 1.26.x
+- **lint**: `golangci-lint run ./...`
+- **build**: `go build -o /dev/null ./...` (compile check)
+
+### goreleaser Automated Releases
+
+Config: `.goreleaser.yaml`
+
+- Trigger: push tag `v*` -> GitHub Actions runs goreleaser
+- Build targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`
+- Binary name: `conoha`
+- Archives: `.tar.gz` (Linux/macOS), `.zip` (Windows)
+- GitHub Release with changelog (auto-generated from commits)
+- Homebrew tap: `crowdy/homebrew-tap` (optional, if demand exists)
+
+Workflow: `.github/workflows/release.yml`
+- On tag push: `goreleaser release --clean`
+- Uses `goreleaser/goreleaser-action@v6`
 
 ---
 
 ## v0.2.1: `server deploy` Command
 
-SSH-based deployment command, built on top of `server ssh` (v0.1.8).
+SSH-based deployment command, built on top of `server ssh` (v0.1.9).
 Designed as a simple building block that AI agents can compose for full deployment pipelines.
 
 ```
