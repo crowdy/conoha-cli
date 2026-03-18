@@ -9,6 +9,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 var Cmd = &cobra.Command{
@@ -97,6 +98,14 @@ func init() {
 	domainDeleteCmd := &cobra.Command{
 		Use: "delete <id>", Short: "Delete a domain", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm("Delete domain and all its records?")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err
