@@ -41,6 +41,7 @@ type ServerCreateRequest struct {
 		SecurityGroups     []SecurityGroupRef   `json:"security_groups,omitempty"`
 		BlockDeviceMapping []BlockDeviceMapping `json:"block_device_mapping_v2,omitempty"`
 		AdminPass          string               `json:"adminPass,omitempty"`
+		UserData           string               `json:"user_data,omitempty"`
 		Metadata           map[string]string    `json:"metadata,omitempty"`
 	} `json:"server"`
 }
