@@ -8,7 +8,6 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -56,7 +55,7 @@ var listCmd = &cobra.Command{
 		for i, l := range lbs {
 			rows[i] = row{ID: l.ID, Name: l.Name, Status: l.ProvisioningStatus, VIP: l.VipAddress}
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+		return cmdutil.FormatOutput(cmd, rows)
 	},
 }
 
@@ -73,7 +72,7 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, lb)
+		return cmdutil.FormatOutput(cmd, lb)
 	},
 }
 
@@ -91,7 +90,7 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, lb)
+		return cmdutil.FormatOutput(cmd, lb)
 	},
 }
 
@@ -135,7 +134,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, items)
+			return cmdutil.FormatOutput(cmd, items)
 		},
 	}
 	listenerCmd.AddCommand(listenerListCmd)
@@ -156,7 +155,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, items)
+			return cmdutil.FormatOutput(cmd, items)
 		},
 	}
 	poolCmd.AddCommand(poolListCmd)
@@ -178,7 +177,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, items)
+			return cmdutil.FormatOutput(cmd, items)
 		},
 	}
 	memberListCmd.Flags().String("pool-id", "", "pool ID (required)")
@@ -201,7 +200,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, items)
+			return cmdutil.FormatOutput(cmd, items)
 		},
 	}
 	healthMonitorCmd.AddCommand(hmListCmd)

@@ -10,7 +10,6 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -64,7 +63,7 @@ var listCmd = &cobra.Command{
 		for i, k := range keypairs {
 			rows[i] = row{Name: k.Name, Fingerprint: k.Fingerprint}
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+		return cmdutil.FormatOutput(cmd, rows)
 	},
 }
 

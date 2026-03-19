@@ -3,11 +3,13 @@ package server
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
+	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/output"
 )
@@ -56,7 +58,7 @@ var listCmd = &cobra.Command{
 			}
 		}
 
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+		return cmdutil.FormatOutput(cmd, rows)
 	},
 }
 
@@ -65,10 +67,11 @@ var showCmd = &cobra.Command{
 	Short: "Show server details",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		compute, err := getComputeAPI(cmd)
+		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err
 		}
+		compute := api.NewComputeAPI(client)
 		server, err := compute.FindServer(args[0])
 		if err != nil {
 			return err
@@ -81,6 +84,37 @@ var showCmd = &cobra.Command{
 
 		// Human-readable key-value output
 		printServerDetail(server)
+
+		// Volume attachments (non-fatal)
+		if attachments, err := compute.ListVolumeAttachments(server.ID); err == nil && len(attachments) > 0 {
+			volumeAPI := api.NewVolumeAPI(client)
+			fmt.Println("Volumes:")
+			for _, a := range attachments {
+				size := ""
+				if vol, err := volumeAPI.GetVolume(a.VolumeID); err == nil {
+					size = fmt.Sprintf(" %dGB", vol.Size)
+				}
+				fmt.Printf("  %s %s%s\n", a.VolumeID, a.Device, size)
+			}
+		}
+
+		// Ports (non-fatal)
+		networkAPI := api.NewNetworkAPI(client)
+		if ports, err := networkAPI.ListPortsByDevice(server.ID); err == nil && len(ports) > 0 {
+			fmt.Println("Ports:")
+			for _, p := range ports {
+				var ips []string
+				for _, ip := range p.FixedIPs {
+					ips = append(ips, ip.IPAddress)
+				}
+				sgs := ""
+				if len(p.SecurityGroups) > 0 {
+					sgs = " sg=[" + strings.Join(p.SecurityGroups, ",") + "]"
+				}
+				fmt.Printf("  %s mac=%s ips=[%s]%s\n", p.ID, p.MACAddress, strings.Join(ips, ","), sgs)
+			}
+		}
+
 		return nil
 	},
 }

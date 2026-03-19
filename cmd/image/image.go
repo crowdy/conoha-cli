@@ -8,7 +8,6 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -37,16 +36,17 @@ var listCmd = &cobra.Command{
 		}
 
 		type row struct {
-			ID      string `json:"id"`
-			Name    string `json:"name"`
-			Status  string `json:"status"`
-			MinDisk int    `json:"min_disk"`
+			ID         string `json:"id"`
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			MinDisk    int    `json:"min_disk"`
+			Visibility string `json:"visibility"`
 		}
 		rows := make([]row, len(images))
 		for i, img := range images {
-			rows[i] = row{ID: img.ID, Name: img.Name, Status: img.Status, MinDisk: img.MinDisk}
+			rows[i] = row{ID: img.ID, Name: img.Name, Status: img.Status, MinDisk: img.MinDisk, Visibility: img.Visibility}
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+		return cmdutil.FormatOutput(cmd, rows)
 	},
 }
 
@@ -63,7 +63,7 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, img)
+		return cmdutil.FormatOutput(cmd, img)
 	},
 }
 

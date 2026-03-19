@@ -8,7 +8,6 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -53,7 +52,7 @@ func init() {
 			for i, d := range domains {
 				rows[i] = row{ID: d.ID, Name: d.Name, TTL: d.TTL}
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+			return cmdutil.FormatOutput(cmd, rows)
 		},
 	}
 
@@ -68,7 +67,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, domain)
+			return cmdutil.FormatOutput(cmd, domain)
 		},
 	}
 
@@ -86,7 +85,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, domain)
+			return cmdutil.FormatOutput(cmd, domain)
 		},
 	}
 	domainCreateCmd.Flags().String("name", "", "domain name (required)")
@@ -145,7 +144,7 @@ func init() {
 			for i, r := range records {
 				rows[i] = row{ID: r.ID, Name: r.Name, Type: r.Type, Data: r.Data, TTL: r.TTL}
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+			return cmdutil.FormatOutput(cmd, rows)
 		},
 	}
 	recordListCmd.Flags().String("domain-id", "", "domain ID (required)")
@@ -174,7 +173,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, record)
+			return cmdutil.FormatOutput(cmd, record)
 		},
 	}
 	recordCreateCmd.Flags().String("domain-id", "", "domain ID (required)")

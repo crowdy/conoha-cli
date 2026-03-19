@@ -8,7 +8,9 @@ import (
 	"text/tabwriter"
 )
 
-type TableFormatter struct{}
+type TableFormatter struct {
+	NoHeaders bool
+}
 
 func (f *TableFormatter) Format(w io.Writer, data any) error {
 	val := reflect.ValueOf(data)
@@ -35,17 +37,19 @@ func (f *TableFormatter) Format(w io.Writer, data any) error {
 	}
 	elemType := elem.Type()
 
-	headers := make([]string, elemType.NumField())
-	for i := 0; i < elemType.NumField(); i++ {
-		field := elemType.Field(i)
-		name := field.Tag.Get("json")
-		if name == "" || name == "-" {
-			name = field.Name
+	if !f.NoHeaders {
+		headers := make([]string, elemType.NumField())
+		for i := 0; i < elemType.NumField(); i++ {
+			field := elemType.Field(i)
+			name := field.Tag.Get("json")
+			if name == "" || name == "-" {
+				name = field.Name
+			}
+			headers[i] = strings.ToUpper(name)
 		}
-		headers[i] = strings.ToUpper(name)
-	}
-	if _, err := fmt.Fprintln(tw, strings.Join(headers, "\t")); err != nil {
-		return err
+		if _, err := fmt.Fprintln(tw, strings.Join(headers, "\t")); err != nil {
+			return err
+		}
 	}
 
 	// Write rows

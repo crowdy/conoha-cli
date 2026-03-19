@@ -9,7 +9,6 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
-	"github.com/crowdy/conoha-cli/internal/output"
 )
 
 var Cmd = &cobra.Command{
@@ -61,10 +60,10 @@ var listCmd = &cobra.Command{
 			}
 		}
 
-		format := cmdutil.GetFormat(cmd)
-		if err := output.New(format).Format(os.Stdout, rows); err != nil {
+		if err := cmdutil.FormatOutput(cmd, rows); err != nil {
 			return err
 		}
+		format := cmdutil.GetFormat(cmd)
 		if format == "" || format == "table" {
 			fmt.Fprintln(os.Stderr, "\nNote: Some flavors may be restricted to prevent abuse. If you cannot use a flavor,")
 			fmt.Fprintln(os.Stderr, "please contact ConoHa support: https://www.conoha.jp/conoha/contact/")
@@ -87,7 +86,7 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, flavor)
+		return cmdutil.FormatOutput(cmd, flavor)
 	},
 }
 

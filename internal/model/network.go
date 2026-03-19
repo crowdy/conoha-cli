@@ -25,12 +25,14 @@ type SubnetsResponse struct {
 }
 
 type Port struct {
-	ID         string    `json:"id" yaml:"id"`
-	Name       string    `json:"name" yaml:"name"`
-	NetworkID  string    `json:"network_id" yaml:"network_id"`
-	Status     string    `json:"status" yaml:"status"`
-	MACAddress string    `json:"mac_address" yaml:"mac_address"`
-	FixedIPs   []FixedIP `json:"fixed_ips" yaml:"fixed_ips"`
+	ID             string    `json:"id" yaml:"id"`
+	Name           string    `json:"name" yaml:"name"`
+	NetworkID      string    `json:"network_id" yaml:"network_id"`
+	DeviceID       string    `json:"device_id" yaml:"device_id"`
+	Status         string    `json:"status" yaml:"status"`
+	MACAddress     string    `json:"mac_address" yaml:"mac_address"`
+	FixedIPs       []FixedIP `json:"fixed_ips" yaml:"fixed_ips"`
+	SecurityGroups []string  `json:"security_groups" yaml:"security_groups"`
 }
 
 type FixedIP struct {

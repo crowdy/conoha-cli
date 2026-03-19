@@ -93,6 +93,17 @@ type KeypairsResponse struct {
 	Keypairs []KeypairWrapper `json:"keypairs"`
 }
 
+type VolumeAttachment struct {
+	ID       string `json:"id" yaml:"id"`
+	VolumeID string `json:"volumeId" yaml:"volume_id"`
+	Device   string `json:"device" yaml:"device"`
+	ServerID string `json:"serverId" yaml:"server_id"`
+}
+
+type VolumeAttachmentsResponse struct {
+	VolumeAttachments []VolumeAttachment `json:"volumeAttachments"`
+}
+
 type KeypairCreateRequest struct {
 	Keypair struct {
 		Name      string `json:"name"`
