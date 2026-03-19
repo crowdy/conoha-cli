@@ -8,7 +8,6 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -38,7 +37,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, creds)
+			return cmdutil.FormatOutput(cmd, creds)
 		},
 	}
 
@@ -53,7 +52,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, cred)
+			return cmdutil.FormatOutput(cmd, cred)
 		},
 	}
 
@@ -104,7 +103,7 @@ func init() {
 			for i, u := range users {
 				rows[i] = row{ID: u.ID, Name: u.Name, Enabled: u.Enabled}
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+			return cmdutil.FormatOutput(cmd, rows)
 		},
 	}
 
@@ -145,7 +144,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, roles)
+			return cmdutil.FormatOutput(cmd, roles)
 		},
 	}
 

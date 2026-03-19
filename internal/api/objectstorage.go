@@ -81,6 +81,16 @@ func (a *ObjectStorageAPI) ListObjects(container string) ([]model.StorageObject,
 	return objects, nil
 }
 
+// ListObjectsWithPrefix returns objects in a container filtered by prefix.
+func (a *ObjectStorageAPI) ListObjectsWithPrefix(container, prefix string) ([]model.StorageObject, error) {
+	url := fmt.Sprintf("%s/%s?format=json&prefix=%s", a.baseURL(), container, prefix)
+	var objects []model.StorageObject
+	if err := a.Client.Get(url, &objects); err != nil {
+		return nil, err
+	}
+	return objects, nil
+}
+
 func (a *ObjectStorageAPI) UploadObject(container, objectName, localPath string) error {
 	file, err := os.Open(localPath)
 	if err != nil {

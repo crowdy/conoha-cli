@@ -105,6 +105,62 @@ func TestCSVFormatterNonSlice(t *testing.T) {
 	}
 }
 
+func TestTableFormatterNoHeaders(t *testing.T) {
+	var buf bytes.Buffer
+	f := &TableFormatter{NoHeaders: true}
+	data := []testItem{{Name: "server1", Value: 100}}
+
+	if err := f.Format(&buf, data); err != nil {
+		t.Fatalf("Format() error: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "NAME") {
+		t.Errorf("expected no header NAME with NoHeaders, got: %s", out)
+	}
+	if !strings.Contains(out, "server1") {
+		t.Errorf("expected 'server1' in output, got: %s", out)
+	}
+}
+
+func TestCSVFormatterNoHeaders(t *testing.T) {
+	var buf bytes.Buffer
+	f := &CSVFormatter{NoHeaders: true}
+	data := []testItem{{Name: "a", Value: 1}, {Name: "b", Value: 2}}
+
+	if err := f.Format(&buf, data); err != nil {
+		t.Fatalf("Format() error: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines (no header), got %d", len(lines))
+	}
+	if strings.Contains(lines[0], "name") && !strings.Contains(lines[0], "a") {
+		t.Errorf("first line should be data, not header: %s", lines[0])
+	}
+}
+
+func TestNewWithOptions(t *testing.T) {
+	f := NewWithOptions(Options{Format: "table", NoHeaders: true})
+	tf, ok := f.(*TableFormatter)
+	if !ok {
+		t.Fatal("expected TableFormatter")
+	}
+	if !tf.NoHeaders {
+		t.Error("expected NoHeaders=true")
+	}
+
+	f = NewWithOptions(Options{Format: "csv", NoHeaders: true})
+	cf, ok := f.(*CSVFormatter)
+	if !ok {
+		t.Fatal("expected CSVFormatter")
+	}
+	if !cf.NoHeaders {
+		t.Error("expected NoHeaders=true")
+	}
+}
+
 func TestNew(t *testing.T) {
 	tests := []struct {
 		format string

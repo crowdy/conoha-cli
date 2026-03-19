@@ -9,7 +9,6 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -57,7 +56,7 @@ var listCmd = &cobra.Command{
 		for i, v := range volumes {
 			rows[i] = row{ID: v.ID, Name: v.Name, Status: v.Status, Size: v.Size}
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+		return cmdutil.FormatOutput(cmd, rows)
 	},
 }
 
@@ -74,7 +73,7 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, vol)
+		return cmdutil.FormatOutput(cmd, vol)
 	},
 }
 
@@ -101,7 +100,7 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, vol)
+		return cmdutil.FormatOutput(cmd, vol)
 	},
 }
 
@@ -151,7 +150,7 @@ var typesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, types)
+		return cmdutil.FormatOutput(cmd, types)
 	},
 }
 
@@ -185,7 +184,7 @@ func init() {
 			for i, b := range backups {
 				rows[i] = row{ID: b.ID, Name: b.Name, Status: b.Status, VolumeID: b.VolumeID, Size: b.Size}
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+			return cmdutil.FormatOutput(cmd, rows)
 		},
 	}
 
@@ -202,7 +201,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, backup)
+			return cmdutil.FormatOutput(cmd, backup)
 		},
 	}
 

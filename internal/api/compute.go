@@ -232,6 +232,16 @@ func (a *ComputeAPI) DetachVolume(serverID, volumeID string) error {
 	return a.Client.Delete(url)
 }
 
+// ListVolumeAttachments returns volumes attached to a server.
+func (a *ComputeAPI) ListVolumeAttachments(serverID string) ([]model.VolumeAttachment, error) {
+	url := fmt.Sprintf("%s/servers/%s/os-volume_attachments", a.baseURL(), serverID)
+	var resp model.VolumeAttachmentsResponse
+	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return resp.VolumeAttachments, nil
+}
+
 // GetServerMetadata returns server metadata.
 func (a *ComputeAPI) GetServerMetadata(id string) (map[string]string, error) {
 	url := fmt.Sprintf("%s/servers/%s/metadata", a.baseURL(), id)

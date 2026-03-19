@@ -8,7 +8,6 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -53,7 +52,7 @@ var listCmd = &cobra.Command{
 		for i, n := range networks {
 			rows[i] = row{ID: n.ID, Name: n.Name, Status: n.Status}
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+		return cmdutil.FormatOutput(cmd, rows)
 	},
 }
 
@@ -70,7 +69,7 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, net)
+		return cmdutil.FormatOutput(cmd, net)
 	},
 }
 
@@ -129,7 +128,7 @@ func init() {
 			for i, s := range subnets {
 				rows[i] = row{ID: s.ID, Name: s.Name, NetworkID: s.NetworkID, CIDR: s.CIDR}
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+			return cmdutil.FormatOutput(cmd, rows)
 		},
 	}
 
@@ -149,7 +148,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, subnet)
+			return cmdutil.FormatOutput(cmd, subnet)
 		},
 	}
 	subnetCreateCmd.Flags().String("network-id", "", "network ID (required)")
@@ -219,7 +218,7 @@ func init() {
 			for i, p := range ports {
 				rows[i] = row{ID: p.ID, Name: p.Name, NetworkID: p.NetworkID, Status: p.Status}
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+			return cmdutil.FormatOutput(cmd, rows)
 		},
 	}
 
@@ -237,7 +236,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, port)
+			return cmdutil.FormatOutput(cmd, port)
 		},
 	}
 	portCreateCmd.Flags().String("network-id", "", "network ID (required)")
@@ -276,8 +275,9 @@ func init() {
 
 // Security Group subcommands
 var sgCmd = &cobra.Command{
-	Use:   "security-group",
-	Short: "Manage security groups",
+	Use:     "security-group",
+	Aliases: []string{"sg"},
+	Short:   "Manage security groups",
 }
 
 func init() {
@@ -303,7 +303,7 @@ func init() {
 			for i, sg := range sgs {
 				rows[i] = row{ID: sg.ID, Name: sg.Name, Description: sg.Description}
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rows)
+			return cmdutil.FormatOutput(cmd, rows)
 		},
 	}
 
@@ -320,7 +320,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, sg)
+			return cmdutil.FormatOutput(cmd, sg)
 		},
 	}
 
@@ -338,7 +338,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, sg)
+			return cmdutil.FormatOutput(cmd, sg)
 		},
 	}
 	sgCreateCmd.Flags().String("name", "", "security group name (required)")
@@ -378,8 +378,9 @@ func init() {
 
 // Security Group Rule subcommands
 var sgRuleCmd = &cobra.Command{
-	Use:   "security-group-rule",
-	Short: "Manage security group rules",
+	Use:     "security-group-rule",
+	Aliases: []string{"sgr"},
+	Short:   "Manage security group rules",
 }
 
 func init() {
@@ -395,7 +396,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rules)
+			return cmdutil.FormatOutput(cmd, rules)
 		},
 	}
 
@@ -427,7 +428,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, rule)
+			return cmdutil.FormatOutput(cmd, rule)
 		},
 	}
 	sgRuleCreateCmd.Flags().String("security-group-id", "", "security group ID (required)")
@@ -488,7 +489,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, policies)
+			return cmdutil.FormatOutput(cmd, policies)
 		},
 	}
 

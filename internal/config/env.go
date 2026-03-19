@@ -16,6 +16,7 @@ const (
 	EnvEndpointMode = "CONOHA_ENDPOINT_MODE"
 	EnvDebug        = "CONOHA_DEBUG"
 	EnvYes          = "CONOHA_YES"
+	EnvNoColor      = "CONOHA_NO_COLOR"
 )
 
 // EnvOr returns the environment variable value if set, otherwise the fallback.
@@ -34,4 +35,14 @@ func IsNoInput() bool {
 // IsYes returns true if confirmation prompts should be auto-confirmed.
 func IsYes() bool {
 	return os.Getenv(EnvYes) == "1" || os.Getenv(EnvYes) == "true"
+}
+
+// IsNoColor returns true if color output should be disabled.
+// Supports both CONOHA_NO_COLOR and the standard NO_COLOR env var.
+func IsNoColor() bool {
+	if v := os.Getenv(EnvNoColor); v == "1" || v == "true" {
+		return true
+	}
+	_, noColor := os.LookupEnv("NO_COLOR")
+	return noColor
 }

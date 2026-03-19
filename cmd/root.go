@@ -53,6 +53,9 @@ var rootCmd = &cobra.Command{
 		if flagYes {
 			_ = os.Setenv(config.EnvYes, "1")
 		}
+		if flagNoColor {
+			_ = os.Setenv(config.EnvNoColor, "1")
+		}
 	},
 }
 
@@ -64,6 +67,9 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "verbose output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "disable color output")
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "skip confirmation prompts")
+	rootCmd.PersistentFlags().Bool("no-headers", false, "hide table/CSV headers")
+	rootCmd.PersistentFlags().StringArray("filter", nil, "filter rows by key=value (repeatable)")
+	rootCmd.PersistentFlags().String("sort-by", "", "sort rows by field name")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)

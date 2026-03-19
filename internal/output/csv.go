@@ -7,7 +7,9 @@ import (
 	"reflect"
 )
 
-type CSVFormatter struct{}
+type CSVFormatter struct {
+	NoHeaders bool
+}
 
 func (f *CSVFormatter) Format(w io.Writer, data any) error {
 	val := reflect.ValueOf(data)
@@ -33,17 +35,19 @@ func (f *CSVFormatter) Format(w io.Writer, data any) error {
 	}
 	elemType := elem.Type()
 
-	headers := make([]string, elemType.NumField())
-	for i := 0; i < elemType.NumField(); i++ {
-		field := elemType.Field(i)
-		name := field.Tag.Get("json")
-		if name == "" || name == "-" {
-			name = field.Name
+	if !f.NoHeaders {
+		headers := make([]string, elemType.NumField())
+		for i := 0; i < elemType.NumField(); i++ {
+			field := elemType.Field(i)
+			name := field.Tag.Get("json")
+			if name == "" || name == "-" {
+				name = field.Name
+			}
+			headers[i] = name
 		}
-		headers[i] = name
-	}
-	if err := writer.Write(headers); err != nil {
-		return err
+		if err := writer.Write(headers); err != nil {
+			return err
+		}
 	}
 
 	// Write rows

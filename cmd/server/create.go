@@ -14,7 +14,6 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
-	"github.com/crowdy/conoha-cli/internal/output"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
@@ -197,7 +196,7 @@ var createCmd = &cobra.Command{
 			}
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, server)
+		return cmdutil.FormatOutput(cmd, server)
 	},
 }
 

@@ -111,6 +111,16 @@ func (a *NetworkAPI) DeletePort(id string) error {
 	return a.Client.Delete(url)
 }
 
+// ListPortsByDevice returns ports associated with a device (server).
+func (a *NetworkAPI) ListPortsByDevice(deviceID string) ([]model.Port, error) {
+	url := fmt.Sprintf("%s/ports?device_id=%s", a.baseURL(), deviceID)
+	var resp model.PortsResponse
+	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Ports, nil
+}
+
 func (a *NetworkAPI) ListSecurityGroups() ([]model.SecurityGroup, error) {
 	url := fmt.Sprintf("%s/security-groups", a.baseURL())
 	var resp model.SecurityGroupsResponse
