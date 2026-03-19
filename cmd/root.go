@@ -32,6 +32,7 @@ var (
 	flagQuiet   bool
 	flagVerbose bool
 	flagNoColor bool
+	flagYes     bool
 )
 
 // rootCmd is the base command.
@@ -49,6 +50,9 @@ var rootCmd = &cobra.Command{
 		if flagNoInput {
 			_ = os.Setenv(config.EnvNoInput, "1")
 		}
+		if flagYes {
+			_ = os.Setenv(config.EnvYes, "1")
+		}
 	},
 }
 
@@ -59,6 +63,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "verbose output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "disable color output")
+	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "skip confirmation prompts")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)

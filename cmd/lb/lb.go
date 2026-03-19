@@ -9,6 +9,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 var Cmd = &cobra.Command{
@@ -99,6 +100,14 @@ var deleteCmd = &cobra.Command{
 	Short: "Delete a load balancer",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ok, err := prompt.Confirm(fmt.Sprintf("Delete load balancer %s?", args[0]))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err

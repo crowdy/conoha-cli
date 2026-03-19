@@ -278,6 +278,53 @@ var createCmd = &cobra.Command{
 			req.Server.ImageRef = imageID
 		}
 
+		// Resolve names for summary
+		imageAPI := api.NewImageAPI(client)
+		imageName := imageID
+		if img, err := imageAPI.GetImage(imageID); err == nil {
+			imageName = img.Name
+		}
+
+		// Print summary
+		fmt.Fprintln(os.Stderr, "=== Server Create Summary ===")
+		fmt.Fprintf(os.Stderr, "  Name:     %s\n", name)
+		fmt.Fprintf(os.Stderr, "  Flavor:   %s (%d vCPU, %s RAM)\n", flavor.Name, flavor.VCPUs, formatMB(flavor.RAM))
+		fmt.Fprintf(os.Stderr, "  Image:    %s\n", imageName)
+		if volumeID != "" {
+			volAnnotation := "[existing]"
+			if created {
+				volAnnotation = "[new]"
+			}
+			volInfo := volumeID[:8]
+			if vol, err := volumeAPI.GetVolume(volumeID); err == nil {
+				volInfo = fmt.Sprintf("%d GB (%s)", vol.Size, vol.VolumeType)
+			}
+			fmt.Fprintf(os.Stderr, "  Volume:   %s %s\n", volInfo, volAnnotation)
+		}
+		if keyName != "" {
+			fmt.Fprintf(os.Stderr, "  Key:      %s\n", keyName)
+		}
+		if adminPass != "" {
+			fmt.Fprintln(os.Stderr, "  Password: (set)")
+		}
+
+		ok, err := prompt.Confirm("Create this server?")
+		if err != nil {
+			if created {
+				fmt.Fprintf(os.Stderr, "Warning: boot volume %s was created but server creation was cancelled.\n", volumeID)
+				fmt.Fprintf(os.Stderr, "You can delete it with: conoha volume delete %s\n", volumeID)
+			}
+			return err
+		}
+		if !ok {
+			if created {
+				fmt.Fprintf(os.Stderr, "Warning: boot volume %s was already created.\n", volumeID)
+				fmt.Fprintf(os.Stderr, "You can delete it with: conoha volume delete %s\n", volumeID)
+			}
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
+
 		server, err := compute.CreateServer(req)
 		if err != nil {
 			if created {
@@ -530,14 +577,22 @@ var deleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		id, err := resolveServerID(compute, args[0])
+		s, err := compute.FindServer(args[0])
 		if err != nil {
 			return err
 		}
-		if err := compute.DeleteServer(id); err != nil {
+		ok, err := prompt.Confirm(fmt.Sprintf("Delete server %q (%s)? This cannot be undone", s.Name, s.ID))
+		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Server %s deleted\n", args[0])
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
+		if err := compute.DeleteServer(s.ID); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Server %s deleted\n", s.Name)
 		return nil
 	},
 }
@@ -619,6 +674,14 @@ var resizeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		ok, err := prompt.Confirm("Resize server? This may cause downtime")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
 		if err := compute.ResizeServer(id, args[1]); err != nil {
 			return err
 		}
@@ -639,6 +702,14 @@ var rebuildCmd = &cobra.Command{
 		id, err := resolveServerID(compute, args[0])
 		if err != nil {
 			return err
+		}
+		ok, err := prompt.Confirm("Rebuild server? All data will be lost")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
 		}
 		if err := compute.RebuildServer(id, args[1]); err != nil {
 			return err

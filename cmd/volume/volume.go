@@ -10,6 +10,7 @@ import (
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 var Cmd = &cobra.Command{
@@ -112,7 +113,24 @@ var deleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := api.NewVolumeAPI(client).DeleteVolume(args[0]); err != nil {
+		volumeAPI := api.NewVolumeAPI(client)
+		vol, err := volumeAPI.GetVolume(args[0])
+		if err != nil {
+			return err
+		}
+		label := fmt.Sprintf("Delete volume %q (%s)?", vol.Name, vol.ID)
+		if vol.Name == "" {
+			label = fmt.Sprintf("Delete volume %s?", vol.ID)
+		}
+		ok, err := prompt.Confirm(label)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
+		if err := volumeAPI.DeleteVolume(vol.ID); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Volume %s deleted\n", args[0])
