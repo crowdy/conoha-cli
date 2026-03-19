@@ -14,6 +14,20 @@ import (
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
+// uniquePath returns a path that doesn't exist yet.
+// If basePath exists, it tries basePath_1, basePath_2, etc.
+func uniquePath(basePath string) string {
+	if _, err := os.Stat(basePath); err != nil {
+		return basePath
+	}
+	for i := 1; ; i++ {
+		p := fmt.Sprintf("%s_%d", basePath, i)
+		if _, err := os.Stat(p); err != nil {
+			return p
+		}
+	}
+}
+
 var Cmd = &cobra.Command{
 	Use:   "keypair",
 	Short: "Manage SSH keypairs",
@@ -76,38 +90,37 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		// Save private key to file if returned by API
+		// Save keys to files if returned by API
 		if kp.PrivateKey != "" {
-			savePath, _ := cmd.Flags().GetString("output")
-			if savePath == "" {
+			basePath, _ := cmd.Flags().GetString("output")
+			if basePath == "" {
 				home, err := os.UserHomeDir()
 				if err != nil {
 					return fmt.Errorf("cannot determine home directory: %w", err)
 				}
-				savePath = filepath.Join(home, ".ssh", fmt.Sprintf("conoha_%s", args[0]))
+				basePath = filepath.Join(home, ".ssh", fmt.Sprintf("conoha_%s", args[0]))
 			}
-			if _, err := os.Stat(savePath); err == nil {
-				return fmt.Errorf("file %s already exists; use --output to specify a different path", savePath)
-			}
-			dir := filepath.Dir(savePath)
+			basePath = uniquePath(basePath)
+			pubPath := basePath + ".pub"
+
+			dir := filepath.Dir(basePath)
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				return fmt.Errorf("creating directory %s: %w", dir, err)
 			}
-			if err := os.WriteFile(savePath, []byte(kp.PrivateKey), 0600); err != nil {
+			if err := os.WriteFile(basePath, []byte(kp.PrivateKey), 0600); err != nil {
 				return fmt.Errorf("saving private key: %w", err)
 			}
-			fmt.Fprintf(os.Stderr, "Private key saved to %s\n", savePath)
+			fmt.Fprintf(os.Stderr, "Private key saved to %s\n", basePath)
+			if kp.PublicKey != "" {
+				if err := os.WriteFile(pubPath, []byte(kp.PublicKey), 0644); err != nil {
+					return fmt.Errorf("saving public key: %w", err)
+				}
+				fmt.Fprintf(os.Stderr, "Public key saved to %s\n", pubPath)
+			}
 		}
 
-		// Output without private key or full public key
-		type keypairRow struct {
-			Name        string `json:"name"`
-			Fingerprint string `json:"fingerprint"`
-		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, keypairRow{
-			Name:        kp.Name,
-			Fingerprint: kp.Fingerprint,
-		})
+		fmt.Fprintf(os.Stderr, "Keypair %s created\n", kp.Name)
+		return nil
 	},
 }
 
