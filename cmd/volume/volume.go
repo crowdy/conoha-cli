@@ -31,6 +31,7 @@ func init() {
 	createCmd.Flags().String("description", "", "volume description")
 	_ = createCmd.MarkFlagRequired("name")
 	_ = createCmd.MarkFlagRequired("size")
+	cmdutil.AddWaitFlags(createCmd)
 }
 
 var listCmd = &cobra.Command{
@@ -96,10 +97,20 @@ var createCmd = &cobra.Command{
 		req.Volume.VolumeType = volType
 		req.Volume.Description = desc
 
-		vol, err := api.NewVolumeAPI(client).CreateVolume(req)
+		volumeAPI := api.NewVolumeAPI(client)
+		vol, err := volumeAPI.CreateVolume(req)
 		if err != nil {
 			return err
 		}
+
+		if wc := cmdutil.GetWaitConfig(cmd, "volume "+name); wc != nil {
+			fmt.Fprintf(os.Stderr, "Waiting for volume %s to become available...\n", name)
+			if err := waitForVolumeAvailable(volumeAPI, vol.ID, wc); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Volume %s is available.\n", name)
+		}
+
 		return cmdutil.FormatOutput(cmd, vol)
 	},
 }
@@ -225,4 +236,21 @@ func init() {
 	backupCmd.AddCommand(backupListCmd)
 	backupCmd.AddCommand(backupShowCmd)
 	backupCmd.AddCommand(backupRestoreCmd)
+}
+
+// waitForVolumeAvailable polls until the volume reaches "available" status.
+func waitForVolumeAvailable(volumeAPI *api.VolumeAPI, id string, wc *cmdutil.WaitConfig) error {
+	return cmdutil.WaitFor(*wc, func() (bool, string, error) {
+		v, err := volumeAPI.GetVolume(id)
+		if err != nil {
+			return false, "", err
+		}
+		if v.Status == "available" {
+			return true, v.Status, nil
+		}
+		if v.Status == "error" {
+			return false, v.Status, fmt.Errorf("volume %s entered error state", id)
+		}
+		return false, v.Status, nil
+	})
 }

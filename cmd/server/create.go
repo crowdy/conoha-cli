@@ -1,13 +1,10 @@
 package server
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
-	"os/signal"
 	"sort"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,9 +15,7 @@ import (
 )
 
 const (
-	volumePollInterval = 10 * time.Second
-	volumePollTimeout  = 5 * time.Minute
-	userDataMaxSize    = 16 * 1024 // 16 KiB
+	userDataMaxSize = 16 * 1024 // 16 KiB
 )
 
 // volumeTypeChoices maps user-friendly names to API volume type values.
@@ -48,6 +43,7 @@ func init() {
 	createCmd.Flags().String("user-data-raw", "", "startup script string (inline)")
 	createCmd.Flags().String("user-data-url", "", "startup script URL (wrapped as #include)")
 	_ = createCmd.MarkFlagRequired("name")
+	cmdutil.AddWaitFlags(createCmd)
 }
 
 var createCmd = &cobra.Command{
@@ -196,6 +192,19 @@ var createCmd = &cobra.Command{
 			}
 			return err
 		}
+
+		if wc := cmdutil.GetWaitConfig(cmd, "server "+name); wc != nil {
+			fmt.Fprintf(os.Stderr, "Waiting for server %s to become active...\n", name)
+			if err := waitForServerStatus(compute, server.ID, "ACTIVE", wc); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Server %s is active.\n", name)
+			// Re-fetch to get final state with IP addresses
+			if s, err := compute.GetServer(server.ID); err == nil {
+				server = s
+			}
+		}
+
 		return cmdutil.FormatOutput(cmd, server)
 	},
 }
@@ -397,8 +406,7 @@ func createBootVolume(volumeAPI *api.VolumeAPI, imageID string) (string, bool, e
 	}
 
 	fmt.Fprintf(os.Stderr, "Waiting for volume %s to become available...\n", vol.ID)
-	vol, err = waitForVolume(volumeAPI, vol.ID)
-	if err != nil {
+	if err := waitForVolumeAvailable(volumeAPI, vol.ID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: boot volume %s was created but may not be ready.\n", vol.ID)
 		fmt.Fprintf(os.Stderr, "You can delete it with: conoha volume delete %s\n", vol.ID)
 		return "", true, err
@@ -439,34 +447,36 @@ func selectExistingVolume(volumeAPI *api.VolumeAPI) (string, bool, error) {
 	return id, false, nil
 }
 
-// waitForVolume polls until the volume reaches "available" status.
-func waitForVolume(volumeAPI *api.VolumeAPI, id string) (*model.Volume, error) {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	deadline := time.Now().Add(volumePollTimeout)
-	for {
+// waitForVolumeAvailable polls until the volume reaches "available" status.
+func waitForVolumeAvailable(volumeAPI *api.VolumeAPI, id string) error {
+	return cmdutil.WaitFor(cmdutil.WaitConfig{Resource: "volume " + id}, func() (bool, string, error) {
 		vol, err := volumeAPI.GetVolume(id)
 		if err != nil {
-			return nil, fmt.Errorf("checking volume status: %w", err)
+			return false, "", fmt.Errorf("checking volume status: %w", err)
 		}
 		if vol.Status == "available" {
-			return vol, nil
+			return true, vol.Status, nil
 		}
 		if vol.Status == "error" {
-			return vol, fmt.Errorf("volume %s entered error state", id)
+			return false, vol.Status, fmt.Errorf("volume %s entered error state", id)
 		}
-		if time.Now().After(deadline) {
-			return vol, fmt.Errorf("timeout waiting for volume %s (status: %s)", id, vol.Status)
-		}
-		fmt.Fprintf(os.Stderr, "  volume %s status: %s\n", id, vol.Status)
+		return false, vol.Status, nil
+	})
+}
 
-		select {
-		case <-ctx.Done():
-			fmt.Fprintf(os.Stderr, "\nInterrupted. Volume creation is still in progress on the server.\n")
-			fmt.Fprintf(os.Stderr, "Check status with: conoha volume show %s\n", id)
-			return vol, fmt.Errorf("interrupted while waiting for volume %s", id)
-		case <-time.After(volumePollInterval):
+// waitForServerStatus polls until the server reaches the target status.
+func waitForServerStatus(compute *api.ComputeAPI, id, target string, wc *cmdutil.WaitConfig) error {
+	return cmdutil.WaitFor(*wc, func() (bool, string, error) {
+		s, err := compute.GetServer(id)
+		if err != nil {
+			return false, "", err
 		}
-	}
+		if s.Status == target {
+			return true, s.Status, nil
+		}
+		if s.Status == "ERROR" {
+			return false, s.Status, fmt.Errorf("server entered ERROR state")
+		}
+		return false, s.Status, nil
+	})
 }
