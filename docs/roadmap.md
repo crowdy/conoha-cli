@@ -83,7 +83,15 @@ Fields:
 
 ---
 
-## v0.1.6: Remaining Confirmations + Keypair
+## v0.1.6: Remaining Confirmations + Keypair + Input Validation
+
+### Client-Side Parameter Validation
+
+Validate required parameters before making API calls to avoid unnecessary HTTP roundtrips and provide clearer error messages.
+
+- `volume create`: `--name` is required by API but not enforced client-side → add `MarkFlagRequired("name")`
+- Audit all create/update commands for required fields that only fail at the API level
+- Validation should happen before any API call (before auth token fetch if possible)
 
 ### Additional Delete Confirmations
 

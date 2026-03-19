@@ -248,6 +248,13 @@ var createCmd = &cobra.Command{
 			}
 		}
 
+		if keyName == "" {
+			keyName, err = selectKeypair(compute)
+			if err != nil {
+				return err
+			}
+		}
+
 		// Resolve boot volume
 		volumeAPI := api.NewVolumeAPI(client)
 		volumeID, created, err := resolveBootVolume(volumeAPI, flavor, imageID, flagVolumeID)
@@ -362,6 +369,25 @@ func selectFlavor(compute *api.ComputeAPI) (*model.Flavor, error) {
 		return nil, err
 	}
 	return flavorMap[id], nil
+}
+
+func selectKeypair(compute *api.ComputeAPI) (string, error) {
+	keypairs, err := compute.ListKeypairs()
+	if err != nil {
+		return "", err
+	}
+	if len(keypairs) == 0 {
+		return "", nil
+	}
+	items := make([]prompt.SelectItem, len(keypairs)+1)
+	items[0] = prompt.SelectItem{Label: "(none)", Value: ""}
+	for i, kp := range keypairs {
+		items[i+1] = prompt.SelectItem{
+			Label: fmt.Sprintf("%s (%s)", kp.Name, kp.Fingerprint),
+			Value: kp.Name,
+		}
+	}
+	return prompt.Select("Select keypair", items)
 }
 
 // flavorNeedsVolume returns true if the flavor requires a boot volume.

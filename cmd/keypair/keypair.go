@@ -3,6 +3,7 @@ package keypair
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 var Cmd = &cobra.Command{
@@ -23,6 +25,7 @@ func init() {
 	Cmd.AddCommand(deleteCmd)
 
 	createCmd.Flags().String("public-key", "", "public key content")
+	createCmd.Flags().StringP("output", "o", "", "save private key to file (default: ~/.ssh/conoha_<name>)")
 }
 
 var listCmd = &cobra.Command{
@@ -72,7 +75,34 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, kp)
+
+		// Save private key to file if returned by API
+		if kp.PrivateKey != "" {
+			savePath, _ := cmd.Flags().GetString("output")
+			if savePath == "" {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return fmt.Errorf("cannot determine home directory: %w", err)
+				}
+				savePath = filepath.Join(home, ".ssh", fmt.Sprintf("conoha_%s", args[0]))
+			}
+			if _, err := os.Stat(savePath); err == nil {
+				return fmt.Errorf("file %s already exists; use --output to specify a different path", savePath)
+			}
+			dir := filepath.Dir(savePath)
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				return fmt.Errorf("creating directory %s: %w", dir, err)
+			}
+			if err := os.WriteFile(savePath, []byte(kp.PrivateKey), 0600); err != nil {
+				return fmt.Errorf("saving private key: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "Private key saved to %s\n", savePath)
+		}
+
+		// Output without private key
+		out := *kp
+		out.PrivateKey = ""
+		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, &out)
 	},
 }
 
@@ -81,6 +111,14 @@ var deleteCmd = &cobra.Command{
 	Short: "Delete a keypair",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ok, err := prompt.Confirm(fmt.Sprintf("Delete keypair %q?", args[0]))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err

@@ -26,10 +26,11 @@ func init() {
 	Cmd.AddCommand(typesCmd)
 	Cmd.AddCommand(backupCmd)
 
-	createCmd.Flags().String("name", "", "volume name")
+	createCmd.Flags().String("name", "", "volume name (required)")
 	createCmd.Flags().Int("size", 0, "volume size in GB (required)")
 	createCmd.Flags().String("type", "", "volume type")
 	createCmd.Flags().String("description", "", "volume description")
+	_ = createCmd.MarkFlagRequired("name")
 	_ = createCmd.MarkFlagRequired("size")
 }
 

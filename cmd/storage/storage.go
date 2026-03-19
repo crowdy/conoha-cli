@@ -10,6 +10,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 var Cmd = &cobra.Command{
@@ -78,6 +79,14 @@ func init() {
 	containerDeleteCmd := &cobra.Command{
 		Use: "delete <name>", Short: "Delete a container", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete container %q? All objects will be removed", args[0]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err
@@ -149,6 +158,14 @@ Examples:
 var rmCmd = &cobra.Command{
 	Use: "rm <container/object>", Short: "Remove an object", Args: cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ok, err := prompt.Confirm(fmt.Sprintf("Delete %s?", args[0]))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err

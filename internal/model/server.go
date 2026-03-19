@@ -81,6 +81,7 @@ type Keypair struct {
 	Name        string `json:"name" yaml:"name"`
 	PublicKey   string `json:"public_key" yaml:"public_key"`
 	Fingerprint string `json:"fingerprint" yaml:"fingerprint"`
+	PrivateKey  string `json:"private_key,omitempty" yaml:"private_key,omitempty"`
 }
 
 type KeypairWrapper struct {
