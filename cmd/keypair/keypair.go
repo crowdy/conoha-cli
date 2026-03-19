@@ -99,10 +99,15 @@ var createCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Private key saved to %s\n", savePath)
 		}
 
-		// Output without private key
-		out := *kp
-		out.PrivateKey = ""
-		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, &out)
+		// Output without private key or full public key
+		type keypairRow struct {
+			Name        string `json:"name"`
+			Fingerprint string `json:"fingerprint"`
+		}
+		return output.New(cmdutil.GetFormat(cmd)).Format(os.Stdout, keypairRow{
+			Name:        kp.Name,
+			Fingerprint: kp.Fingerprint,
+		})
 	},
 }
 
