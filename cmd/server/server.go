@@ -383,7 +383,7 @@ func selectKeypair(compute *api.ComputeAPI) (string, error) {
 	items[0] = prompt.SelectItem{Label: "(none)", Value: ""}
 	for i, kp := range keypairs {
 		items[i+1] = prompt.SelectItem{
-			Label: fmt.Sprintf("%s (%s)", kp.Name, kp.Fingerprint),
+			Label: kp.Name,
 			Value: kp.Name,
 		}
 	}
