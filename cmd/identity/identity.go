@@ -9,6 +9,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 var Cmd = &cobra.Command{
@@ -59,6 +60,14 @@ func init() {
 	credDeleteCmd := &cobra.Command{
 		Use: "delete <id>", Short: "Delete a credential", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete credential %s?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err
@@ -102,6 +111,14 @@ func init() {
 	subuserDeleteCmd := &cobra.Command{
 		Use: "delete <id>", Short: "Delete a sub-user", Args: cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete sub-user %s?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err

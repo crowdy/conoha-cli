@@ -9,6 +9,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
 	"github.com/crowdy/conoha-cli/internal/output"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 var Cmd = &cobra.Command{
@@ -78,6 +79,14 @@ var deleteCmd = &cobra.Command{
 	Short: "Delete a network",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ok, err := prompt.Confirm(fmt.Sprintf("Delete network %s?", args[0]))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
+		}
 		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err
@@ -155,6 +164,14 @@ func init() {
 		Short: "Delete a subnet",
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete subnet %s?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err
@@ -232,6 +249,14 @@ func init() {
 		Short: "Delete a port",
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete port %s?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err
@@ -325,6 +350,14 @@ func init() {
 		Short: "Delete a security group",
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete security group %s?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err
@@ -411,6 +444,14 @@ func init() {
 		Short: "Delete a security group rule",
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete security group rule %s?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 			client, err := cmdutil.NewClient(cmd)
 			if err != nil {
 				return err
