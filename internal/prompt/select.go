@@ -40,7 +40,7 @@ func Select(label string, items []SelectItem) (string, error) {
 		Searcher: searcher,
 		Stdout:   os.Stderr,
 		Templates: &promptui.SelectTemplates{
-			Label:    "{{ . }}:",
+			Label:    "{{ . }} (Ctrl+C to cancel):",
 			Active:   "\u25b8 {{ .Label | cyan }}",
 			Inactive: "  {{ .Label }}",
 			Selected: "\u2713 {{ .Label | green }}",
