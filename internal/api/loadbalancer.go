@@ -98,6 +98,17 @@ func (a *LoadBalancerAPI) DeleteListener(id string) error {
 	return a.Client.Delete(url)
 }
 
+func (a *LoadBalancerAPI) GetListener(id string) (*model.Listener, error) {
+	url := fmt.Sprintf("%s/listeners/%s", a.baseURL(), id)
+	var resp struct {
+		Listener model.Listener `json:"listener"`
+	}
+	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Listener, nil
+}
+
 func (a *LoadBalancerAPI) ListPools() ([]model.Pool, error) {
 	url := fmt.Sprintf("%s/pools", a.baseURL())
 	var resp model.PoolsResponse
@@ -131,6 +142,17 @@ func (a *LoadBalancerAPI) DeletePool(id string) error {
 	return a.Client.Delete(url)
 }
 
+func (a *LoadBalancerAPI) GetPool(id string) (*model.Pool, error) {
+	url := fmt.Sprintf("%s/pools/%s", a.baseURL(), id)
+	var resp struct {
+		Pool model.Pool `json:"pool"`
+	}
+	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Pool, nil
+}
+
 func (a *LoadBalancerAPI) ListMembers(poolID string) ([]model.Member, error) {
 	url := fmt.Sprintf("%s/pools/%s/members", a.baseURL(), poolID)
 	var resp model.MembersResponse
@@ -140,15 +162,17 @@ func (a *LoadBalancerAPI) ListMembers(poolID string) ([]model.Member, error) {
 	return resp.Members, nil
 }
 
-func (a *LoadBalancerAPI) CreateMember(poolID, address string, port, weight int) (*model.Member, error) {
+func (a *LoadBalancerAPI) CreateMember(poolID, name, address string, port int, weight *int) (*model.Member, error) {
 	url := fmt.Sprintf("%s/pools/%s/members", a.baseURL(), poolID)
-	body := map[string]any{
-		"member": map[string]any{
-			"address":       address,
-			"protocol_port": port,
-			"weight":        weight,
-		},
+	memberBody := map[string]any{
+		"name":          name,
+		"address":       address,
+		"protocol_port": port,
 	}
+	if weight != nil {
+		memberBody["weight"] = *weight
+	}
+	body := map[string]any{"member": memberBody}
 	var resp struct {
 		Member model.Member `json:"member"`
 	}
@@ -163,6 +187,17 @@ func (a *LoadBalancerAPI) DeleteMember(poolID, memberID string) error {
 	return a.Client.Delete(url)
 }
 
+func (a *LoadBalancerAPI) GetMember(poolID, memberID string) (*model.Member, error) {
+	url := fmt.Sprintf("%s/pools/%s/members/%s", a.baseURL(), poolID, memberID)
+	var resp struct {
+		Member model.Member `json:"member"`
+	}
+	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Member, nil
+}
+
 func (a *LoadBalancerAPI) ListHealthMonitors() ([]model.HealthMonitor, error) {
 	url := fmt.Sprintf("%s/healthmonitors", a.baseURL())
 	var resp model.HealthMonitorsResponse
@@ -172,17 +207,23 @@ func (a *LoadBalancerAPI) ListHealthMonitors() ([]model.HealthMonitor, error) {
 	return resp.HealthMonitors, nil
 }
 
-func (a *LoadBalancerAPI) CreateHealthMonitor(poolID, monitorType string, delay, timeout, maxRetries int) (*model.HealthMonitor, error) {
+func (a *LoadBalancerAPI) CreateHealthMonitor(poolID, name, monitorType string, delay, timeout, maxRetries int, urlPath, expectedCodes string) (*model.HealthMonitor, error) {
 	url := fmt.Sprintf("%s/healthmonitors", a.baseURL())
-	body := map[string]any{
-		"healthmonitor": map[string]any{
-			"pool_id":     poolID,
-			"type":        monitorType,
-			"delay":       delay,
-			"timeout":     timeout,
-			"max_retries": maxRetries,
-		},
+	hmBody := map[string]any{
+		"pool_id":     poolID,
+		"name":        name,
+		"type":        monitorType,
+		"delay":       delay,
+		"timeout":     timeout,
+		"max_retries": maxRetries,
 	}
+	if urlPath != "" {
+		hmBody["url_path"] = urlPath
+	}
+	if expectedCodes != "" {
+		hmBody["expected_codes"] = expectedCodes
+	}
+	body := map[string]any{"healthmonitor": hmBody}
 	var resp struct {
 		HealthMonitor model.HealthMonitor `json:"healthmonitor"`
 	}
@@ -195,4 +236,15 @@ func (a *LoadBalancerAPI) CreateHealthMonitor(poolID, monitorType string, delay,
 func (a *LoadBalancerAPI) DeleteHealthMonitor(id string) error {
 	url := fmt.Sprintf("%s/healthmonitors/%s", a.baseURL(), id)
 	return a.Client.Delete(url)
+}
+
+func (a *LoadBalancerAPI) GetHealthMonitor(id string) (*model.HealthMonitor, error) {
+	url := fmt.Sprintf("%s/healthmonitors/%s", a.baseURL(), id)
+	var resp struct {
+		HealthMonitor model.HealthMonitor `json:"healthmonitor"`
+	}
+	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.HealthMonitor, nil
 }
