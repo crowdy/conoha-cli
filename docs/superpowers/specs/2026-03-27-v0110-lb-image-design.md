@@ -13,45 +13,59 @@ Complete the Load Balancer CLI with full CRUD for all sub-resources (listener, p
 | Model fields | Full OpenAPI spec reflection | `show` outputs entire struct; all API-returned fields should be present |
 | `--wait` for LB | Yes, all sub-resource creates | `cmdutil.WaitFor()` already exists; LB resources have `provisioning_status` |
 | Implementation order | LB first, then image | LB has existing API; image requires new binary upload capability |
+| Update commands | Deferred | OpenAPI supports PUT for all sub-resources; out of scope for v0.1.10 |
 
 ## 1. Model Changes
+
+### Shared Helper Type
+
+```go
+// IDRef is used for association arrays (loadbalancers, listeners, pools)
+type IDRef struct {
+    ID string `json:"id" yaml:"id"`
+}
+```
 
 ### `internal/model/loadbalancer.go`
 
 Expand all sub-resource structs to match OpenAPI spec response fields.
 
-**Listener** (add 8 fields):
+**Listener** — OpenAPI response returns `loadbalancers` as an array, not a flat ID:
 ```go
 type Listener struct {
-    ID                 string `json:"id" yaml:"id"`
-    Name               string `json:"name" yaml:"name"`
-    Description        string `json:"description" yaml:"description"`
-    ProvisioningStatus string `json:"provisioning_status" yaml:"provisioning_status"`
-    OperatingStatus    string `json:"operating_status" yaml:"operating_status"`
-    AdminStateUp       bool   `json:"admin_state_up" yaml:"admin_state_up"`
-    Protocol           string `json:"protocol" yaml:"protocol"`
-    ProtocolPort       int    `json:"protocol_port" yaml:"protocol_port"`
-    ConnectionLimit    int    `json:"connection_limit" yaml:"connection_limit"`
-    DefaultPoolID      string `json:"default_pool_id" yaml:"default_pool_id"`
-    LoadBalancerID     string `json:"loadbalancer_id" yaml:"loadbalancer_id"`
-    ProjectID          string `json:"project_id" yaml:"project_id"`
-    TenantID           string `json:"tenant_id" yaml:"tenant_id"`
+    ID                 string  `json:"id" yaml:"id"`
+    Name               string  `json:"name" yaml:"name"`
+    Description        string  `json:"description" yaml:"description"`
+    ProvisioningStatus string  `json:"provisioning_status" yaml:"provisioning_status"`
+    OperatingStatus    string  `json:"operating_status" yaml:"operating_status"`
+    AdminStateUp       bool    `json:"admin_state_up" yaml:"admin_state_up"`
+    Protocol           string  `json:"protocol" yaml:"protocol"`
+    ProtocolPort       int     `json:"protocol_port" yaml:"protocol_port"`
+    ConnectionLimit    int     `json:"connection_limit" yaml:"connection_limit"`
+    DefaultPoolID      string  `json:"default_pool_id" yaml:"default_pool_id"`
+    Loadbalancers      []IDRef `json:"loadbalancers" yaml:"loadbalancers"`
+    ProjectID          string  `json:"project_id" yaml:"project_id"`
+    TenantID           string  `json:"tenant_id" yaml:"tenant_id"`
 }
 ```
+Note: `CreateListener` API request sends `loadbalancer_id` (flat string), but the response returns `loadbalancers` (array). The list row struct extracts the first element's ID for display.
 
-**Pool** (add 6 fields):
+**Pool** — OpenAPI response includes `loadbalancers`, `listeners`, `members` arrays:
 ```go
 type Pool struct {
-    ID                 string `json:"id" yaml:"id"`
-    Name               string `json:"name" yaml:"name"`
-    Description        string `json:"description" yaml:"description"`
-    ProvisioningStatus string `json:"provisioning_status" yaml:"provisioning_status"`
-    OperatingStatus    string `json:"operating_status" yaml:"operating_status"`
-    AdminStateUp       bool   `json:"admin_state_up" yaml:"admin_state_up"`
-    Protocol           string `json:"protocol" yaml:"protocol"`
-    LBMethod           string `json:"lb_algorithm" yaml:"lb_algorithm"`
-    ProjectID          string `json:"project_id" yaml:"project_id"`
-    TenantID           string `json:"tenant_id" yaml:"tenant_id"`
+    ID                 string  `json:"id" yaml:"id"`
+    Name               string  `json:"name" yaml:"name"`
+    Description        string  `json:"description" yaml:"description"`
+    ProvisioningStatus string  `json:"provisioning_status" yaml:"provisioning_status"`
+    OperatingStatus    string  `json:"operating_status" yaml:"operating_status"`
+    AdminStateUp       bool    `json:"admin_state_up" yaml:"admin_state_up"`
+    Protocol           string  `json:"protocol" yaml:"protocol"`
+    LBMethod           string  `json:"lb_algorithm" yaml:"lb_algorithm"`
+    Loadbalancers      []IDRef `json:"loadbalancers" yaml:"loadbalancers"`
+    Listeners          []IDRef `json:"listeners" yaml:"listeners"`
+    Members            []IDRef `json:"members" yaml:"members"`
+    ProjectID          string  `json:"project_id" yaml:"project_id"`
+    TenantID           string  `json:"tenant_id" yaml:"tenant_id"`
 }
 ```
 
@@ -71,25 +85,26 @@ type Member struct {
 }
 ```
 
-**HealthMonitor** (add 6 fields):
+**HealthMonitor** — OpenAPI response returns `pools` as an array, not `pool_id`:
 ```go
 type HealthMonitor struct {
-    ID                 string `json:"id" yaml:"id"`
-    Name               string `json:"name" yaml:"name"`
-    Type               string `json:"type" yaml:"type"`
-    Delay              int    `json:"delay" yaml:"delay"`
-    Timeout            int    `json:"timeout" yaml:"timeout"`
-    MaxRetries         int    `json:"max_retries" yaml:"max_retries"`
-    URLPath            string `json:"url_path" yaml:"url_path"`
-    ExpectedCodes      string `json:"expected_codes" yaml:"expected_codes"`
-    AdminStateUp       bool   `json:"admin_state_up" yaml:"admin_state_up"`
-    PoolID             string `json:"pool_id" yaml:"pool_id"`
-    ProvisioningStatus string `json:"provisioning_status" yaml:"provisioning_status"`
-    OperatingStatus    string `json:"operating_status" yaml:"operating_status"`
-    ProjectID          string `json:"project_id" yaml:"project_id"`
-    TenantID           string `json:"tenant_id" yaml:"tenant_id"`
+    ID                 string  `json:"id" yaml:"id"`
+    Name               string  `json:"name" yaml:"name"`
+    Type               string  `json:"type" yaml:"type"`
+    Delay              int     `json:"delay" yaml:"delay"`
+    Timeout            int     `json:"timeout" yaml:"timeout"`
+    MaxRetries         int     `json:"max_retries" yaml:"max_retries"`
+    URLPath            string  `json:"url_path" yaml:"url_path"`
+    ExpectedCodes      string  `json:"expected_codes" yaml:"expected_codes"`
+    AdminStateUp       bool    `json:"admin_state_up" yaml:"admin_state_up"`
+    Pools              []IDRef `json:"pools" yaml:"pools"`
+    ProvisioningStatus string  `json:"provisioning_status" yaml:"provisioning_status"`
+    OperatingStatus    string  `json:"operating_status" yaml:"operating_status"`
+    ProjectID          string  `json:"project_id" yaml:"project_id"`
+    TenantID           string  `json:"tenant_id" yaml:"tenant_id"`
 }
 ```
+Note: `CreateHealthMonitor` API request sends `pool_id` (flat string), but the response returns `pools` (array). The list row struct extracts the first element's ID for display.
 
 ### `internal/model/image.go`
 
@@ -103,7 +118,24 @@ type ImageCreateRequest struct {
 }
 ```
 
-Existing `Image` struct is sufficient for responses.
+Enrich existing `Image` struct with additional fields from OpenAPI response:
+
+```go
+type Image struct {
+    ID              string    `json:"id" yaml:"id"`
+    Name            string    `json:"name" yaml:"name"`
+    Status          string    `json:"status" yaml:"status"`
+    DiskFormat      string    `json:"disk_format" yaml:"disk_format"`
+    ContainerFormat string    `json:"container_format" yaml:"container_format"`
+    MinDisk         int       `json:"min_disk" yaml:"min_disk"`
+    MinRAM          int       `json:"min_ram" yaml:"min_ram"`
+    Size            int64     `json:"size" yaml:"size"`
+    Checksum        string    `json:"checksum" yaml:"checksum"`
+    Visibility      string    `json:"visibility" yaml:"visibility"`
+    Owner           string    `json:"owner" yaml:"owner"`
+    CreatedAt       time.Time `json:"created_at" yaml:"created_at"`
+}
+```
 
 ## 2. API Changes
 
@@ -123,22 +155,23 @@ Pattern: same as `GetLoadBalancer` — `var resp struct{ X model.X }` wrapper.
 **Modify 2 Create signatures:**
 
 ```go
-// Add name parameter
-func (a *LoadBalancerAPI) CreateMember(poolID, name, address string, port, weight int) (*model.Member, error)
+// Add name parameter; weight is optional (omit from body when 0, defaults to 1 server-side)
+func (a *LoadBalancerAPI) CreateMember(poolID, name, address string, port int, weight *int) (*model.Member, error)
 
 // Add name + optional HTTP health check fields
 func (a *LoadBalancerAPI) CreateHealthMonitor(poolID, name, monitorType string, delay, timeout, maxRetries int, urlPath, expectedCodes string) (*model.HealthMonitor, error)
 ```
 
-`CreateHealthMonitor`: `urlPath` and `expectedCodes` are only included in the request body when non-empty (for HTTP/HTTPS type monitors).
+- `CreateMember`: `weight` is a pointer — `nil` means omit from request body (API defaults to 1). OpenAPI does not list `weight` in required fields for create.
+- `CreateHealthMonitor`: `urlPath` and `expectedCodes` are only included in the request body when non-empty (for HTTP/HTTPS type monitors).
 
 ### `internal/api/image.go`
 
 **Add 2 methods:**
 
 ```go
-// POST /v2/images
-func (a *ImageAPI) CreateImage(name, diskFormat string) (*model.Image, error)
+// POST /v2/images (returns 200, not 201)
+func (a *ImageAPI) CreateImage(name, diskFormat, containerFormat string) (*model.Image, error)
 
 // PUT /v2/images/{id}/file
 func (a *ImageAPI) UploadImageFile(id string, reader io.Reader, size int64) error
@@ -223,16 +256,16 @@ func waitForLBResource(lbAPI *api.LoadBalancerAPI, resourceType, id, poolID stri
 
 - **show**: `ExactArgs(1)`, Get API call, `FormatOutput(cmd, item)`
 - **create**: required flags via `MarkFlagRequired`, API call, `FormatOutput(cmd, created)`, optional `--wait` polling
-- **delete**: `ExactArgs(1)`, `prompt.Confirm("Delete {resource} {id}?")`, Delete API call, stderr success message
+- **delete**: `ExactArgs(1)`, fetch resource via Get to display name, `prompt.Confirm("Delete {resource} \"{name}\" ({id})?")`, Delete API call, stderr success message
 
 ### List Command Row Structs
 
 Existing list commands output full model structs. For consistency with other list commands (server, volume), add `row` structs to show only key fields in table output:
 
-- **Listener list row**: ID, Name, Protocol, ProtocolPort, LoadBalancerID
-- **Pool list row**: ID, Name, Protocol, LBMethod
+- **Listener list row**: ID, Name, Protocol, ProtocolPort, OperatingStatus (LB ID extracted from `Loadbalancers[0].ID` if present)
+- **Pool list row**: ID, Name, Protocol, LBMethod, OperatingStatus
 - **Member list row**: ID, Name, Address, ProtocolPort, Weight, OperatingStatus
-- **HealthMonitor list row**: ID, Name, Type, Delay, Timeout, PoolID
+- **HealthMonitor list row**: ID, Name, Type, Delay, Timeout, PoolID (extracted from `Pools[0].ID` if present)
 
 ## 5. CLI Commands — Image (3 new commands)
 
@@ -269,7 +302,7 @@ conoha image import --name my-iso --file ubuntu.iso [--wait]
 - Convenience command: internally calls create then upload
 - `--name` required, `--file` required
 - On upload failure, prints: `Image record created (ID: xxx) but upload failed. Retry with: conoha image upload xxx --file ...`
-- `--wait`: polls `GetImage(id)` until status becomes `active`
+- `--wait`: polls `GetImage(id)` until status becomes `active`. Status flow: `queued` → `saving` → `active`. Treat `killed` or `deactivated` as terminal errors.
 
 ### Binary Upload Implementation
 
@@ -298,7 +331,19 @@ func (a *ImageAPI) UploadImageFile(id string, reader io.Reader, size int64) erro
 
 Streams from `io.Reader` (via `os.Open`) — no memory buffering for large ISO files.
 
-## 6. Verification Plan
+## 6. Client-Side Validation
+
+Validate flag values before API calls to provide clear error messages:
+
+| Flag | Valid Values | Commands |
+|------|-------------|----------|
+| `--protocol` (listener) | `TCP`, `UDP` | `lb listener create` |
+| `--protocol` (pool) | `TCP`, `UDP` | `lb pool create` |
+| `--lb-algorithm` | `ROUND_ROBIN`, `LEAST_CONNECTIONS` | `lb pool create` |
+| `--type` (healthmonitor) | `TCP`, `HTTP`, `HTTPS`, `PING`, `UDP-CONNECT` | `lb healthmonitor create` |
+| `--timeout` < `--delay` | numeric comparison | `lb healthmonitor create` |
+
+## 7. Verification Plan
 
 1. `go build ./...` — compiles
 2. `golangci-lint run ./...` — no lint errors
@@ -310,7 +355,7 @@ Streams from `io.Reader` (via `os.Open`) — no memory buffering for large ISO f
    - `conoha image create/upload/import` — new commands
 5. `conoha lb listener --help` — shows all subcommands
 
-## 7. Commit Strategy
+## 8. Commit Strategy
 
 | # | Scope | Description |
 |---|-------|-------------|
