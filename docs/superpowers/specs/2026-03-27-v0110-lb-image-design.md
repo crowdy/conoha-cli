@@ -63,7 +63,7 @@ type Pool struct {
     LBMethod           string  `json:"lb_algorithm" yaml:"lb_algorithm"`
     Loadbalancers      []IDRef `json:"loadbalancers" yaml:"loadbalancers"`
     Listeners          []IDRef `json:"listeners" yaml:"listeners"`
-    Members            []IDRef `json:"members" yaml:"members"`
+    Members            []string `json:"members" yaml:"members"`
     ProjectID          string  `json:"project_id" yaml:"project_id"`
     TenantID           string  `json:"tenant_id" yaml:"tenant_id"`
 }
@@ -256,7 +256,7 @@ func waitForLBResource(lbAPI *api.LoadBalancerAPI, resourceType, id, poolID stri
 
 - **show**: `ExactArgs(1)`, Get API call, `FormatOutput(cmd, item)`
 - **create**: required flags via `MarkFlagRequired`, API call, `FormatOutput(cmd, created)`, optional `--wait` polling
-- **delete**: `ExactArgs(1)`, fetch resource via Get to display name, `prompt.Confirm("Delete {resource} \"{name}\" ({id})?")`, Delete API call, stderr success message
+- **delete**: `ExactArgs(1)`, fetch resource via Get to display name, `prompt.Confirm("Delete {resource} \"{name}\" ({id})?")`, Delete API call, stderr success message. Also update existing `lb delete` command to use this pattern for consistency.
 
 ### List Command Row Structs
 
@@ -277,7 +277,7 @@ conoha image create --name my-iso [--disk-format iso] [--container-format bare]
 
 - `--name` required
 - `--disk-format` default `iso` (ConoHa only supports iso)
-- `--container-format` default `bare`
+- `--container-format` default `bare` (optional per OpenAPI; omit from request body if empty)
 - Output: created image record (id, name, status=queued)
 
 ### `image upload`
@@ -330,6 +330,11 @@ func (a *ImageAPI) UploadImageFile(id string, reader io.Reader, size int64) erro
 ```
 
 Streams from `io.Reader` (via `os.Open`) — no memory buffering for large ISO files.
+
+**Implementation notes for binary upload:**
+- **Timeout**: The default `Client.HTTP` has a 30s timeout, which will fail for large ISO uploads. `UploadImageFile` must create a dedicated `http.Client` with no timeout (or use `context.WithTimeout` with a generous limit) for the upload request.
+- **Debug logging bypass**: `Client.Do` reads the entire request body into memory when debug logging is enabled (`io.ReadAll(req.Body)`). The upload must use `Client.HTTP.Do(req)` directly (after setting auth headers manually) to avoid this, or check body size before debug-logging.
+- **Response format**: Image API responses are flat JSON (not wrapped in `{"image": {...}}`), unlike LB resources. `CreateImage` should unmarshal directly into `model.Image`.
 
 ## 6. Client-Side Validation
 
