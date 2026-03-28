@@ -8,7 +8,7 @@ Add GitHub Actions CI/CD pipelines and expand unit test coverage from 18.7% to 5
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Coverage strategy | API layer first | Largest untested codebase area (~30% of code), httptest pattern already exists |
+| Coverage strategy | API layer first | Largest untested codebase area (~22% of LOC, 100+ methods), httptest pattern already exists |
 | CI triggers | push main + PR | Personal project, simple and sufficient |
 | Release platforms | 6 builds (existing) | linux/darwin/windows × amd64/arm64, `.goreleaser.yaml` already configured |
 | Spec scope | Single spec | CI/Release are small (2 YAML files), tests are the bulk |
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      - run: go test ./...
+      - run: go test -race ./...
 
   lint:
     runs-on: ubuntu-latest
@@ -131,6 +131,14 @@ func TestListServers(t *testing.T) {
 }
 ```
 
+To reduce boilerplate, create a shared helper in `internal/api/testutil_test.go`:
+
+```go
+func newTestClient(ts *httptest.Server) *Client {
+    return &Client{HTTP: ts.Client(), Token: "test-token", TenantID: "test-tenant"}
+}
+```
+
 Each test verifies:
 - HTTP method (GET/POST/PUT/DELETE)
 - URL path (correct endpoint)
@@ -140,29 +148,33 @@ Each test verifies:
 
 ### Test Files to Create
 
-| File | Tests For | Method Count | Priority |
-|------|-----------|-------------|----------|
-| `internal/api/compute_test.go` | ListServers, GetServer, CreateServer, DeleteServer, StartServer, StopServer, RebootServer, ResizeServer, RebuildServer, GetConsoleURL, ListAddresses, AttachVolume, DetachVolume | ~15 | 1 |
-| `internal/api/loadbalancer_test.go` | All LB CRUD + sub-resources (Get/List/Create/Delete for LB, Listener, Pool, Member, HealthMonitor) | ~18 | 2 |
-| `internal/api/volume_test.go` | ListVolumes, GetVolume, CreateVolume, DeleteVolume, ListVolumeTypes, ListBackups, GetBackup, RestoreBackup | ~8 | 3 |
-| `internal/api/dns_test.go` | ListDomains, GetDomain, CreateDomain, DeleteDomain, ListRecords, CreateRecord, DeleteRecord | ~7 | 4 |
-| `internal/api/network_test.go` | ListNetworks, ListSubnets, ListPorts, ListSecurityGroups, ListSecurityGroupRules, CreateSecurityGroupRule, DeleteSecurityGroupRule, DeleteSecurityGroup | ~8 | 5 |
-| `internal/api/image_test.go` | ListImages, GetImage, DeleteImage, CreateImage, UploadImageFile | ~5 | 6 |
-| `internal/api/objectstorage_test.go` | ListContainers, CreateContainer, DeleteContainer, ListObjects, UploadObject, DeleteObject | ~6 | 7 |
-| `internal/api/identity_test.go` | ListCredentials, CreateCredential, DeleteCredential, ListSubUsers | ~4 | 8 |
-| `internal/api/auth_test.go` | Authenticate, EnsureToken (with token caching) | ~3 | 9 |
+Method counts are from actual source code audit. Each file tests all public methods in the corresponding source file. The table lists representative methods; the implementer should test ALL public methods.
+
+| File | Source File | Actual Methods | Priority | Notes |
+|------|-----------|----------------|----------|-------|
+| `compute_test.go` | `compute.go` | ~19 | 1 | ListServers, GetServer, FindServer, CreateServer, DeleteServer, RenameServer, Start/Stop/Reboot/Resize/Rebuild, GetConsoleURL, AttachVolume, DetachVolume, ListVolumeAttachments, GetServerMetadata, etc. |
+| `loadbalancer_test.go` | `loadbalancer.go` | ~20 | 2 | All CRUD + sub-resources (LB, Listener, Pool, Member, HealthMonitor) |
+| `volume_test.go` | `volume.go` | ~9 | 3 | Volumes + VolumeTypes + Backups |
+| `dns_test.go` | `dns.go` | ~9 | 4 | Domains + Records (CRUD + Update) |
+| `network_test.go` | `network.go` | ~19 | 5 | Networks, Subnets, Ports, SecurityGroups, SecurityGroupRules, QoS |
+| `image_test.go` | `image.go` | ~5 | 6 | ListImages, GetImage, DeleteImage, CreateImage. Note: `UploadImageFile` creates its own `http.Client{}` bypassing `a.Client.HTTP`, making it incompatible with httptest. Exclude from httptest; test separately or refactor. |
+| `objectstorage_test.go` | `objectstorage.go` | ~10 | 7 | Containers + Objects + Publish/Unpublish + AccountInfo. Upload/Download tests need `t.TempDir()` for file I/O. |
+| `identity_test.go` | `identity.go` | ~8 | 8 | Credentials + SubUsers (CRUD + Roles) |
+| `auth_test.go` | `auth.go` | ~2 | 9 | Authenticate + EnsureToken. Constraint: do NOT test `CONOHA_ENDPOINT_MODE` branches (internal endpoint info). Coverage limited to ~50-60%. |
+
+**Total testable methods: ~100+**
 
 ### Coverage Target
 
 | Area | Current | After Tests | Notes |
 |------|---------|-------------|-------|
-| `internal/api/` | 10.4% | ~80% | httptest for all endpoints |
-| `internal/config/` | 68.2% | ~80% | Fill gaps in Set() methods |
-| `internal/prompt/` | 23.0% | ~40% | Expand Confirm/Select edge cases |
-| `cmd/cmdutil/` | 33.3% | ~50% | NewClient, GetFormat helpers |
+| `internal/api/` | 10.4% | ~65-70% | httptest for all endpoints; `UploadImageFile` and `auth.go` ENDPOINT_MODE paths excluded |
+| `internal/config/` | 68.2% | ~85% | Fill gaps in Set() methods |
+| `internal/prompt/` | 23.0% | ~45% | Expand Confirm/Select edge cases |
+| `cmd/cmdutil/` | 33.3% | ~55% | NewClient, GetFormat helpers |
 | **Overall** | **18.7%** | **~50%** | Target met |
 
-API layer is ~30% of total codebase LOC. Getting it to 80% coverage brings overall to ~40%. Supplementing with config/prompt/cmdutil gap-filling reaches 50%.
+API layer is ~22% of total non-test LOC (~1800/8000 lines). Getting it to ~70% coverage brings overall to ~32%. Combined with supplementary tests (config/prompt/cmdutil + already-high model/output), overall reaches ~50%. The supplementary tests are essential to close the gap — API tests alone are not sufficient.
 
 ### Supplementary Test Additions
 
