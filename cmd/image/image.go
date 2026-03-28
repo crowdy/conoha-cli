@@ -216,7 +216,16 @@ var deleteCmd = &cobra.Command{
 	Short: "Delete an image",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ok, err := prompt.Confirm(fmt.Sprintf("Delete image %s?", args[0]))
+		client, err := cmdutil.NewClient(cmd)
+		if err != nil {
+			return err
+		}
+		imageAPI := api.NewImageAPI(client)
+		img, err := imageAPI.GetImage(args[0])
+		if err != nil {
+			return err
+		}
+		ok, err := prompt.Confirm(fmt.Sprintf("Delete image %q (%s)?", img.Name, img.ID))
 		if err != nil {
 			return err
 		}
@@ -224,11 +233,7 @@ var deleteCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "Cancelled.")
 			return nil
 		}
-		client, err := cmdutil.NewClient(cmd)
-		if err != nil {
-			return err
-		}
-		if err := api.NewImageAPI(client).DeleteImage(args[0]); err != nil {
+		if err := imageAPI.DeleteImage(args[0]); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Image %s deleted\n", args[0])
