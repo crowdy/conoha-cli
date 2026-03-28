@@ -99,7 +99,16 @@ var deleteCmd = &cobra.Command{
 	Short: "Delete a load balancer",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ok, err := prompt.Confirm(fmt.Sprintf("Delete load balancer %s?", args[0]))
+		client, err := cmdutil.NewClient(cmd)
+		if err != nil {
+			return err
+		}
+		lbAPI := api.NewLoadBalancerAPI(client)
+		lb, err := lbAPI.GetLoadBalancer(args[0])
+		if err != nil {
+			return err
+		}
+		ok, err := prompt.Confirm(fmt.Sprintf("Delete load balancer %q (%s)?", lb.Name, lb.ID))
 		if err != nil {
 			return err
 		}
@@ -107,11 +116,7 @@ var deleteCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "Cancelled.")
 			return nil
 		}
-		client, err := cmdutil.NewClient(cmd)
-		if err != nil {
-			return err
-		}
-		if err := api.NewLoadBalancerAPI(client).DeleteLoadBalancer(args[0]); err != nil {
+		if err := lbAPI.DeleteLoadBalancer(args[0]); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Load balancer %s deleted\n", args[0])
@@ -119,89 +124,42 @@ var deleteCmd = &cobra.Command{
 	},
 }
 
-// Listener subcommands
-var listenerCmd = &cobra.Command{Use: "listener", Short: "Manage listeners"}
-
-func init() {
-	listenerListCmd := &cobra.Command{
-		Use: "list", Short: "List listeners",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := cmdutil.NewClient(cmd)
+// waitForLBResource polls a sub-resource until provisioning_status becomes ACTIVE or ERROR.
+func waitForLBResource(lbAPI *api.LoadBalancerAPI, resourceType, id, poolID string, wc *cmdutil.WaitConfig) error {
+	return cmdutil.WaitFor(*wc, func() (bool, string, error) {
+		var status string
+		switch resourceType {
+		case "listener":
+			r, err := lbAPI.GetListener(id)
 			if err != nil {
-				return err
+				return false, "", err
 			}
-			items, err := api.NewLoadBalancerAPI(client).ListListeners()
+			status = r.ProvisioningStatus
+		case "pool":
+			r, err := lbAPI.GetPool(id)
 			if err != nil {
-				return err
+				return false, "", err
 			}
-			return cmdutil.FormatOutput(cmd, items)
-		},
-	}
-	listenerCmd.AddCommand(listenerListCmd)
-}
-
-// Pool subcommands
-var poolCmd = &cobra.Command{Use: "pool", Short: "Manage pools"}
-
-func init() {
-	poolListCmd := &cobra.Command{
-		Use: "list", Short: "List pools",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := cmdutil.NewClient(cmd)
+			status = r.ProvisioningStatus
+		case "member":
+			r, err := lbAPI.GetMember(poolID, id)
 			if err != nil {
-				return err
+				return false, "", err
 			}
-			items, err := api.NewLoadBalancerAPI(client).ListPools()
+			status = r.ProvisioningStatus
+		case "healthmonitor":
+			r, err := lbAPI.GetHealthMonitor(id)
 			if err != nil {
-				return err
+				return false, "", err
 			}
-			return cmdutil.FormatOutput(cmd, items)
-		},
-	}
-	poolCmd.AddCommand(poolListCmd)
-}
-
-// Member subcommands
-var memberCmd = &cobra.Command{Use: "member", Short: "Manage pool members"}
-
-func init() {
-	memberListCmd := &cobra.Command{
-		Use: "list", Short: "List members",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := cmdutil.NewClient(cmd)
-			if err != nil {
-				return err
-			}
-			poolID, _ := cmd.Flags().GetString("pool-id")
-			items, err := api.NewLoadBalancerAPI(client).ListMembers(poolID)
-			if err != nil {
-				return err
-			}
-			return cmdutil.FormatOutput(cmd, items)
-		},
-	}
-	memberListCmd.Flags().String("pool-id", "", "pool ID (required)")
-	_ = memberListCmd.MarkFlagRequired("pool-id")
-	memberCmd.AddCommand(memberListCmd)
-}
-
-// Health Monitor subcommands
-var healthMonitorCmd = &cobra.Command{Use: "healthmonitor", Short: "Manage health monitors"}
-
-func init() {
-	hmListCmd := &cobra.Command{
-		Use: "list", Short: "List health monitors",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := cmdutil.NewClient(cmd)
-			if err != nil {
-				return err
-			}
-			items, err := api.NewLoadBalancerAPI(client).ListHealthMonitors()
-			if err != nil {
-				return err
-			}
-			return cmdutil.FormatOutput(cmd, items)
-		},
-	}
-	healthMonitorCmd.AddCommand(hmListCmd)
+			status = r.ProvisioningStatus
+		}
+		if status == "ACTIVE" {
+			return true, status, nil
+		}
+		if status == "ERROR" {
+			return false, status, fmt.Errorf("%s %s entered ERROR state", resourceType, id)
+		}
+		return false, status, nil
+	})
 }
