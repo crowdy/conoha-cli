@@ -57,9 +57,13 @@ var deployCmd = &cobra.Command{
 			return fmt.Errorf("upload exited with code %d", exitCode)
 		}
 
-		// Docker compose up
+		// Docker compose up (copy .env.server if exists)
 		fmt.Fprintf(os.Stderr, "Building and starting containers...\n")
-		composeCmd := fmt.Sprintf("cd %s && docker compose up -d --build --remove-orphans && docker compose ps", workDir)
+		composeCmd := fmt.Sprintf(
+			"ENV_FILE=/opt/conoha/%s.env.server; "+
+				"if [ -f \"$ENV_FILE\" ]; then cp \"$ENV_FILE\" %s/.env; fi && "+
+				"cd %s && docker compose up -d --build --remove-orphans && docker compose ps",
+			ctx.AppName, workDir, workDir)
 		exitCode, err = internalssh.RunCommand(ctx.Client, composeCmd, os.Stdout, os.Stderr)
 		if err != nil {
 			return fmt.Errorf("deploy failed: %w", err)
