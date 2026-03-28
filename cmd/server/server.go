@@ -32,6 +32,7 @@ func init() {
 	Cmd.AddCommand(attachVolumeCmd)
 	Cmd.AddCommand(detachVolumeCmd)
 	Cmd.AddCommand(sshCmd)
+	Cmd.AddCommand(deployCmd)
 }
 
 func getComputeAPI(cmd *cobra.Command) (*api.ComputeAPI, error) {
