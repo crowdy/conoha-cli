@@ -11,4 +11,8 @@ var Cmd = &cobra.Command{
 func init() {
 	Cmd.AddCommand(initCmd)
 	Cmd.AddCommand(deployCmd)
+	Cmd.AddCommand(logsCmd)
+	Cmd.AddCommand(statusCmd)
+	Cmd.AddCommand(stopCmd)
+	Cmd.AddCommand(restartCmd)
 }
