@@ -293,8 +293,44 @@ conoha app init <server> [--app-name myapp]
 - Extracted from `cmd/server/ssh.go` for reuse across commands
 - Input validation: app names, env keys (prevent shell injection)
 
-### Phase 2+ (future)
+---
 
-- `app deploy` (git push wrapper)
-- `app logs/status/stop/restart`
-- `app env/destroy/list`
+## v0.3.1: App Lifecycle Commands (Phase 2)
+
+App lifecycle management commands for deployed applications.
+
+### `app deploy`
+
+```
+conoha app deploy <server> --app-name myapp
+```
+
+- Archive current directory (respects `.dockerignore`), upload via SSH
+- Clean deploy: removes old files, extracts tar, runs `docker compose up -d --build`
+- Pre-flight check: verifies compose file exists locally
+
+### `app logs`
+
+```
+conoha app logs <server> --app-name myapp [--follow/-f] [--tail N] [--service svc]
+```
+
+### `app status` / `app stop` / `app restart`
+
+```
+conoha app status <server> --app-name myapp
+conoha app stop <server> --app-name myapp
+conoha app restart <server> --app-name myapp
+```
+
+### Shared Infrastructure
+
+- `connectToApp` helper: shared SSH connection boilerplate for all app commands
+- `RunWithStdin`: SSH command execution with stdin data piping
+- `.dockerignore` parser: simple glob patterns, always excludes `.git/`
+
+### Phase 3+ (future)
+
+- `app env` (remote env var management)
+- `app destroy` (remove deployment)
+- `app list` (list deployed apps)
