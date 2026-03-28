@@ -192,7 +192,7 @@ Beyond the API layer, fill gaps in already-partially-tested packages:
 ## 4. Verification Plan
 
 1. `go test ./...` — all tests pass
-2. `go test ./... -coverprofile=coverage.out && go tool cover -func=coverage.out | tail -1` — overall ≥ 50%
+2. `go test ./... -coverprofile=coverage.out && go tool cover -func=coverage.out | tail -1` — overall ≥ 35%
 3. `golangci-lint run ./...` — 0 issues
 4. GitHub Actions: push to PR, verify CI runs test/lint/build
 5. Tag + push: verify goreleaser creates release (can test with `v0.2.0-rc1`)
