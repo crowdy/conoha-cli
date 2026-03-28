@@ -16,4 +16,6 @@ func init() {
 	Cmd.AddCommand(stopCmd)
 	Cmd.AddCommand(restartCmd)
 	Cmd.AddCommand(envCmd)
+	Cmd.AddCommand(destroyCmd)
+	Cmd.AddCommand(listCmd)
 }
