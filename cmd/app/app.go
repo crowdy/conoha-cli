@@ -15,4 +15,5 @@ func init() {
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(stopCmd)
 	Cmd.AddCommand(restartCmd)
+	Cmd.AddCommand(envCmd)
 }
