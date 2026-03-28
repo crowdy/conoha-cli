@@ -87,6 +87,33 @@ func RunScript(client *ssh.Client, script []byte, env map[string]string, stdout,
 	return 0, nil
 }
 
+// RunWithStdin executes a command, piping stdinData to its stdin.
+// Stdout/stderr are streamed to the provided writers.
+// Returns the remote exit code.
+func RunWithStdin(client *ssh.Client, command string, stdinData io.Reader, stdout, stderr io.Writer) (int, error) {
+	if client == nil {
+		return -1, fmt.Errorf("SSH client is nil")
+	}
+
+	session, err := client.NewSession()
+	if err != nil {
+		return -1, err
+	}
+	defer func() { _ = session.Close() }()
+
+	session.Stdin = stdinData
+	session.Stdout = stdout
+	session.Stderr = stderr
+
+	if err := session.Run(command); err != nil {
+		if exitErr, ok := err.(*ssh.ExitError); ok {
+			return exitErr.ExitStatus(), nil
+		}
+		return -1, err
+	}
+	return 0, nil
+}
+
 // RunCommand executes a single command on the remote server.
 // Stdout/stderr are streamed to the provided writers.
 // Returns the remote exit code.
