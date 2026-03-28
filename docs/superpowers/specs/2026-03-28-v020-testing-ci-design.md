@@ -160,7 +160,7 @@ Method counts are from actual source code audit. Each file tests all public meth
 | `image_test.go` | `image.go` | ~5 | 6 | ListImages, GetImage, DeleteImage, CreateImage. Note: `UploadImageFile` creates its own `http.Client{}` bypassing `a.Client.HTTP`, making it incompatible with httptest. Exclude from httptest; test separately or refactor. |
 | `objectstorage_test.go` | `objectstorage.go` | ~10 | 7 | Containers + Objects + Publish/Unpublish + AccountInfo. Upload/Download tests need `t.TempDir()` for file I/O. |
 | `identity_test.go` | `identity.go` | ~8 | 8 | Credentials + SubUsers (CRUD + Roles) |
-| `auth_test.go` | `auth.go` | ~2 | 9 | Authenticate + EnsureToken. Constraint: do NOT test `CONOHA_ENDPOINT_MODE` branches (internal endpoint info). Coverage limited to ~50-60%. |
+| `auth_test.go` | `auth.go` | ~2 | 9 | Authenticate + EnsureToken. Constraints: (1) do NOT test `CONOHA_ENDPOINT_MODE` branches (internal endpoint info), (2) `Authenticate()` creates its own `http.Client{}` (line 89), so use `CONOHA_ENDPOINT` env var to redirect to httptest server. Coverage limited to ~50-60%. |
 
 **Total testable methods: ~100+**
 
@@ -172,9 +172,14 @@ Method counts are from actual source code audit. Each file tests all public meth
 | `internal/config/` | 68.2% | ~85% | Fill gaps in Set() methods |
 | `internal/prompt/` | 23.0% | ~45% | Expand Confirm/Select edge cases |
 | `cmd/cmdutil/` | 33.3% | ~55% | NewClient, GetFormat helpers |
-| **Overall** | **18.7%** | **~50%** | Target met |
+| **Overall** | **18.7%** | **~35-40%** | Realistic target |
 
-API layer is ~22% of total non-test LOC (~1800/8000 lines). Getting it to ~70% coverage brings overall to ~32%. Combined with supplementary tests (config/prompt/cmdutil + already-high model/output), overall reaches ~50%. The supplementary tests are essential to close the gap — API tests alone are not sufficient.
+API layer is ~22% of total non-test LOC (~1800/8000 lines), but `cmd/` packages represent ~60% of LOC and are mostly untested (0% except cmd root 48.4% and cmd/server 14.5%). Getting API to ~70% and supplementary packages to targets brings overall to ~35-40%. Reaching 50% would require `cmd/` package tests, which are deferred — cobra command handlers require integration-style testing with higher effort/reward ratio. The roadmap's 50% target is aspirational; 35-40% represents a solid foundation for future test additions.
+
+### Out of Scope (deferred)
+
+- **`cmd/` package command handler tests**: Roadmap lists `cmd/` as a priority area, but command handlers are tightly coupled to cobra + API calls. Testing them requires integration-style scaffolding with high effort. Deferred to a future release. `cmd/cmdutil/` utilities are in scope.
+- **`internal/output/` tests**: Already at 82.6%, well above target. No additional tests needed.
 
 ### Supplementary Test Additions
 
