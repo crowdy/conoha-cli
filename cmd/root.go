@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/crowdy/conoha-cli/cmd/app"
 	"github.com/crowdy/conoha-cli/cmd/auth"
 	cmdconfig "github.com/crowdy/conoha-cli/cmd/config"
 	"github.com/crowdy/conoha-cli/cmd/dns"
@@ -85,6 +86,7 @@ func init() {
 	rootCmd.AddCommand(dns.Cmd)
 	rootCmd.AddCommand(storage.Cmd)
 	rootCmd.AddCommand(identity.Cmd)
+	rootCmd.AddCommand(app.Cmd)
 }
 
 // Execute runs the root command.
