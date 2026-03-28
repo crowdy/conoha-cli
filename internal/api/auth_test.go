@@ -18,7 +18,7 @@ func TestAuthenticate(t *testing.T) {
 		w.Header().Set("X-Subject-Token", "new-token-123")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprint(w, `{"token":{"expires_at":"2099-12-31T23:59:59Z"}}`)
+		_, _ = fmt.Fprint(w, `{"token":{"expires_at":"2099-12-31T23:59:59Z"}}`)
 	}))
 	defer ts.Close()
 
@@ -39,7 +39,7 @@ func TestAuthenticate(t *testing.T) {
 func TestAuthenticateNon201Error(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"error":{"message":"unauthorized"}}`)
+		_, _ = fmt.Fprint(w, `{"error":{"message":"unauthorized"}}`)
 	}))
 	defer ts.Close()
 
@@ -55,7 +55,7 @@ func TestAuthenticateNoTokenHeader(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprint(w, `{"token":{"expires_at":"2099-12-31T23:59:59Z"}}`)
+		_, _ = fmt.Fprint(w, `{"token":{"expires_at":"2099-12-31T23:59:59Z"}}`)
 		// No X-Subject-Token header
 	}))
 	defer ts.Close()
@@ -74,7 +74,7 @@ func TestAuthenticateExpiresAtFallback(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		// expires_at is not a valid RFC3339 timestamp — should fall back to 24h from now
-		fmt.Fprint(w, `{"token":{"expires_at":"not-a-date"}}`)
+		_, _ = fmt.Fprint(w, `{"token":{"expires_at":"not-a-date"}}`)
 	}))
 	defer ts.Close()
 
@@ -141,7 +141,7 @@ func TestEnsureTokenReauthenticate(t *testing.T) {
 		w.Header().Set("X-Subject-Token", "reauth-token")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprint(w, `{"token":{"expires_at":"2099-12-31T23:59:59Z"}}`)
+		_, _ = fmt.Fprint(w, `{"token":{"expires_at":"2099-12-31T23:59:59Z"}}`)
 	}))
 	defer ts.Close()
 
