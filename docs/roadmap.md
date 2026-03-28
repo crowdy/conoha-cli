@@ -261,35 +261,40 @@ Workflow: `.github/workflows/release.yml`
 
 ---
 
-## v0.2.1: `server deploy` Command
+## v0.3.0: Deploy Feature (Phase 1)
 
-SSH-based deployment command, built on top of `server ssh` (v0.1.9).
-Designed as a simple building block that AI agents can compose for full deployment pipelines.
+SSH-based deploy infrastructure for 1-person developer deploying to 1 VM.
+
+### `server deploy` Command
 
 ```
-conoha server deploy <server> --script deploy.sh
-conoha server deploy <server> --script deploy.sh --env APP_ENV=production
+conoha server deploy <server> --script deploy.sh [--env KEY=VALUE]...
 ```
 
-- Connect to server via SSH (reuse `server ssh` infrastructure)
-- Upload and execute a deployment script on the remote server
-- `--script <file>`: local script to upload and run
-- `--env KEY=VALUE`: pass environment variables to the script (repeatable)
+- Upload and execute a script on a remote server via SSH
+- `--env KEY=VALUE`: pass environment variables (repeatable)
 - Stream stdout/stderr in real-time
 - Exit with remote script's exit code
 
-### AI Agent Workflow Example
+### `app init` Command
 
-An AI agent can compose the full pipeline using existing commands:
-1. `conoha server create --user-data init.sh` -- create VPS with initial setup
-2. `conoha server ssh <server> "apt install -y docker.io"` -- install dependencies
-3. `conoha server deploy <server> --script deploy.sh` -- deploy application
+```
+conoha app init <server> [--app-name myapp]
+```
 
-No need for built-in app detection or framework support -- the agent generates
-appropriate scripts based on project type (Rails, Laravel, Django, static, etc.).
+- Install Docker + Docker Compose + git on the server
+- Create git bare repo at `/opt/conoha/{app-name}.git/`
+- Install post-receive hook for `docker compose up -d --build` on push
+- Print `git remote add conoha ...` instructions
 
-References:
-- Kamal: Docker + SSH deploy (https://kamal-deploy.org/)
-- Dokku: git push-based self-hosted PaaS (https://dokku.com/)
-- az webapp up: simplest PaaS deploy (one command)
-- gcloud run deploy --source: auto-buildpack + container
+### `internal/ssh/` Package
+
+- Shared SSH execution helpers (Connect, RunScript, RunCommand)
+- Extracted from `cmd/server/ssh.go` for reuse across commands
+- Input validation: app names, env keys (prevent shell injection)
+
+### Phase 2+ (future)
+
+- `app deploy` (git push wrapper)
+- `app logs/status/stop/restart`
+- `app env/destroy/list`
