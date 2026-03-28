@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/crowdy/conoha-cli/internal/model"
+	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
 func TestGetServerIP(t *testing.T) {
@@ -77,7 +78,7 @@ func TestGetServerIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getServerIP(tt.server)
+			got, err := internalssh.ServerIP(tt.server)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -96,12 +97,12 @@ func TestGetServerIP(t *testing.T) {
 
 func TestResolveKeyPath(t *testing.T) {
 	// Empty key name should return empty
-	if got := resolveKeyPath(""); got != "" {
+	if got := internalssh.ResolveKeyPath(""); got != "" {
 		t.Errorf("expected empty, got %q", got)
 	}
 
 	// Non-existent key file should return empty (with warning)
-	if got := resolveKeyPath("nonexistent-key-12345"); got != "" {
+	if got := internalssh.ResolveKeyPath("nonexistent-key-12345"); got != "" {
 		t.Errorf("expected empty for non-existent key, got %q", got)
 	}
 }

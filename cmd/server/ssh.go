@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
-	"github.com/crowdy/conoha-cli/internal/model"
+	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
 func init() {
@@ -34,7 +33,7 @@ var sshCmd = &cobra.Command{
 			return err
 		}
 
-		ip, err := getServerIP(s)
+		ip, err := internalssh.ServerIP(s)
 		if err != nil {
 			return err
 		}
@@ -44,7 +43,7 @@ var sshCmd = &cobra.Command{
 		identity, _ := cmd.Flags().GetString("identity")
 
 		if identity == "" {
-			identity = resolveKeyPath(s.KeyName)
+			identity = internalssh.ResolveKeyPath(s.KeyName)
 		}
 
 		sshArgs := []string{"ssh"}
@@ -67,52 +66,4 @@ var sshCmd = &cobra.Command{
 		// Windows is not supported for this command.
 		return syscall.Exec(sshPath, sshArgs, os.Environ())
 	},
-}
-
-// getServerIP extracts the best IP address from server addresses.
-// Prefers floating IPv4 over fixed IPv4.
-func getServerIP(s *model.Server) (string, error) {
-	var fixedIP, floatingIP string
-
-	for _, addrs := range s.Addresses {
-		for _, a := range addrs {
-			if a.Version != 4 {
-				continue
-			}
-			switch a.Type {
-			case "floating":
-				floatingIP = a.Addr
-			case "fixed":
-				if fixedIP == "" {
-					fixedIP = a.Addr
-				}
-			}
-		}
-	}
-
-	if floatingIP != "" {
-		return floatingIP, nil
-	}
-	if fixedIP != "" {
-		return fixedIP, nil
-	}
-	return "", fmt.Errorf("no IPv4 address found for server %s", s.Name)
-}
-
-// resolveKeyPath returns the SSH private key path for a server's key name.
-// Returns empty string if no key is associated or the file doesn't exist.
-func resolveKeyPath(keyName string) string {
-	if keyName == "" {
-		return ""
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	keyPath := filepath.Join(home, ".ssh", "conoha_"+keyName)
-	if _, err := os.Stat(keyPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: key file %s not found, connecting without key\n", keyPath)
-		return ""
-	}
-	return keyPath
 }
