@@ -174,3 +174,115 @@ func TestIsNoInput(t *testing.T) {
 		t.Error("expected false")
 	}
 }
+
+func TestCredentialsStore_Set(t *testing.T) {
+	setupTestDir(t)
+	store := &CredentialsStore{Profiles: map[string]Credentials{}}
+
+	store.Set("myprofile", Credentials{Password: "p@ss"})
+	cred, ok := store.Get("myprofile")
+	if !ok {
+		t.Fatal("expected credential to exist after Set()")
+	}
+	if cred.Password != "p@ss" {
+		t.Errorf("expected 'p@ss', got %q", cred.Password)
+	}
+
+	// Overwrite existing
+	store.Set("myprofile", Credentials{Password: "newpass"})
+	cred, ok = store.Get("myprofile")
+	if !ok {
+		t.Fatal("expected credential to exist after overwrite")
+	}
+	if cred.Password != "newpass" {
+		t.Errorf("expected 'newpass', got %q", cred.Password)
+	}
+}
+
+func TestCredentialsStore_SetAndSave(t *testing.T) {
+	dir := setupTestDir(t)
+	store := &CredentialsStore{Profiles: map[string]Credentials{}}
+	store.Set("prod", Credentials{Password: "secret123"})
+
+	if err := store.Save(); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	// Check file permissions
+	info, err := os.Stat(filepath.Join(dir, "credentials.yaml"))
+	if err != nil {
+		t.Fatalf("Stat() error: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("expected 0600, got %o", perm)
+	}
+
+	loaded, err := LoadCredentials()
+	if err != nil {
+		t.Fatalf("LoadCredentials() error: %v", err)
+	}
+	cred, ok := loaded.Get("prod")
+	if !ok {
+		t.Fatal("expected credential for 'prod'")
+	}
+	if cred.Password != "secret123" {
+		t.Errorf("expected 'secret123', got %q", cred.Password)
+	}
+}
+
+func TestTokenStore_Set(t *testing.T) {
+	setupTestDir(t)
+	store := &TokenStore{Profiles: map[string]TokenEntry{}}
+
+	expiry := time.Now().Add(2 * time.Hour)
+	store.Set("myprofile", TokenEntry{Token: "tok-abc", ExpiresAt: expiry})
+
+	entry, ok := store.Get("myprofile")
+	if !ok {
+		t.Fatal("expected token entry to exist after Set()")
+	}
+	if entry.Token != "tok-abc" {
+		t.Errorf("expected 'tok-abc', got %q", entry.Token)
+	}
+	if !store.IsValid("myprofile") {
+		t.Error("expected token to be valid after Set() with future expiry")
+	}
+
+	// Overwrite with expired token
+	store.Set("myprofile", TokenEntry{Token: "old", ExpiresAt: time.Now().Add(-1 * time.Hour)})
+	if store.IsValid("myprofile") {
+		t.Error("expected token to be invalid after overwrite with expired entry")
+	}
+}
+
+func TestTokenStore_SetAndSave(t *testing.T) {
+	dir := setupTestDir(t)
+	store := &TokenStore{Profiles: map[string]TokenEntry{}}
+	expiry := time.Now().Add(1 * time.Hour).Truncate(time.Second)
+	store.Set("staging", TokenEntry{Token: "stg-token", ExpiresAt: expiry})
+
+	if err := store.Save(); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	// Check file permissions
+	info, err := os.Stat(filepath.Join(dir, "tokens.yaml"))
+	if err != nil {
+		t.Fatalf("Stat() error: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("expected 0600, got %o", perm)
+	}
+
+	loaded, err := LoadTokens()
+	if err != nil {
+		t.Fatalf("LoadTokens() error: %v", err)
+	}
+	entry, ok := loaded.Get("staging")
+	if !ok {
+		t.Fatal("expected token for 'staging'")
+	}
+	if entry.Token != "stg-token" {
+		t.Errorf("expected 'stg-token', got %q", entry.Token)
+	}
+}

@@ -1,6 +1,47 @@
 package cmdutil
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/spf13/cobra"
+)
+
+func newCmdWithFormatFlag() *cobra.Command {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("format", "", "output format")
+	return cmd
+}
+
+func TestGetFormat_Default(t *testing.T) {
+	t.Setenv("CONOHA_CONFIG_DIR", t.TempDir())
+	t.Setenv("CONOHA_FORMAT", "")
+	cmd := newCmdWithFormatFlag()
+	got := GetFormat(cmd)
+	if got != "table" {
+		t.Errorf("expected 'table', got %q", got)
+	}
+}
+
+func TestGetFormat_EnvOverride(t *testing.T) {
+	t.Setenv("CONOHA_FORMAT", "json")
+	cmd := newCmdWithFormatFlag()
+	got := GetFormat(cmd)
+	if got != "json" {
+		t.Errorf("expected 'json', got %q", got)
+	}
+}
+
+func TestGetFormat_FlagOverride(t *testing.T) {
+	t.Setenv("CONOHA_FORMAT", "json")
+	cmd := newCmdWithFormatFlag()
+	if err := cmd.Flags().Set("format", "yaml"); err != nil {
+		t.Fatalf("failed to set flag: %v", err)
+	}
+	got := GetFormat(cmd)
+	if got != "yaml" {
+		t.Errorf("expected 'yaml', got %q", got)
+	}
+}
 
 func TestFormatBytes(t *testing.T) {
 	tests := []struct {
