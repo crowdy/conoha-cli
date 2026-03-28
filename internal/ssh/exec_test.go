@@ -43,3 +43,10 @@ func TestRunCommandNilClient(t *testing.T) {
 		t.Fatal("expected error for nil client")
 	}
 }
+
+func TestRunWithStdinNilClient(t *testing.T) {
+	_, err := RunWithStdin(nil, "cat", &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("expected error for nil client")
+	}
+}

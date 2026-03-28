@@ -6,17 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/crowdy/conoha-cli/cmd/cmdutil"
-	"github.com/crowdy/conoha-cli/internal/api"
-	"github.com/crowdy/conoha-cli/internal/prompt"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
 func init() {
-	initCmd.Flags().String("app-name", "", "application name")
-	initCmd.Flags().StringP("user", "l", "root", "SSH user")
-	initCmd.Flags().StringP("port", "p", "22", "SSH port")
-	initCmd.Flags().StringP("identity", "i", "", "SSH private key path")
+	addAppFlags(initCmd)
 }
 
 var initCmd = &cobra.Command{
@@ -25,59 +19,16 @@ var initCmd = &cobra.Command{
 	Long:  "Install Docker, create git bare repo with post-receive hook for git-push deploys.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := cmdutil.NewClient(cmd)
+		ctx, err := connectToApp(cmd, args)
 		if err != nil {
 			return err
 		}
-		compute := api.NewComputeAPI(client)
+		defer func() { _ = ctx.Client.Close() }()
 
-		s, err := compute.FindServer(args[0])
-		if err != nil {
-			return err
-		}
+		fmt.Fprintf(os.Stderr, "Initializing app %q on %s (%s)...\n", ctx.AppName, ctx.Server.Name, ctx.IP)
 
-		ip, err := internalssh.ServerIP(s)
-		if err != nil {
-			return err
-		}
-
-		appName, _ := cmd.Flags().GetString("app-name")
-		if appName == "" {
-			appName, err = prompt.String("App name")
-			if err != nil {
-				return err
-			}
-		}
-		if err := internalssh.ValidateAppName(appName); err != nil {
-			return err
-		}
-
-		user, _ := cmd.Flags().GetString("user")
-		port, _ := cmd.Flags().GetString("port")
-		identity, _ := cmd.Flags().GetString("identity")
-
-		if identity == "" {
-			identity = internalssh.ResolveKeyPath(s.KeyName)
-		}
-		if identity == "" {
-			return fmt.Errorf("no SSH key found; specify --identity or ensure ~/.ssh/conoha_<keyname> exists")
-		}
-
-		sshClient, err := internalssh.Connect(internalssh.ConnectConfig{
-			Host:    ip,
-			Port:    port,
-			User:    user,
-			KeyPath: identity,
-		})
-		if err != nil {
-			return fmt.Errorf("SSH connect: %w", err)
-		}
-		defer func() { _ = sshClient.Close() }()
-
-		fmt.Fprintf(os.Stderr, "Initializing app %q on %s (%s)...\n", appName, s.Name, ip)
-
-		script := generateInitScript(appName)
-		exitCode, err := internalssh.RunScript(sshClient, script, nil, os.Stdout, os.Stderr)
+		script := generateInitScript(ctx.AppName)
+		exitCode, err := internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
 		if err != nil {
 			return fmt.Errorf("init failed: %w", err)
 		}
@@ -85,9 +36,9 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("init script exited with code %d", exitCode)
 		}
 
-		fmt.Fprintf(os.Stderr, "\nApp %q initialized on %s (%s).\n\n", appName, s.Name, ip)
+		fmt.Fprintf(os.Stderr, "\nApp %q initialized on %s (%s).\n\n", ctx.AppName, ctx.Server.Name, ctx.IP)
 		fmt.Fprintf(os.Stderr, "Add the remote and deploy:\n")
-		fmt.Fprintf(os.Stderr, "  git remote add conoha %s@%s:/opt/conoha/%s.git\n", user, ip, appName)
+		fmt.Fprintf(os.Stderr, "  git remote add conoha %s@%s:/opt/conoha/%s.git\n", ctx.User, ctx.IP, ctx.AppName)
 		fmt.Fprintf(os.Stderr, "  git push conoha main\n")
 
 		return nil
