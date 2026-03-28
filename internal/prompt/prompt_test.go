@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+func TestString_NoInput(t *testing.T) {
+	t.Setenv("CONOHA_NO_INPUT", "1")
+	val, err := String("Enter value")
+	if val != "" {
+		t.Fatalf("expected empty string, got %q", val)
+	}
+	if err == nil {
+		t.Fatal("expected error when CONOHA_NO_INPUT=1")
+	}
+	if got := err.Error(); got != "input required but --no-input is set" {
+		t.Fatalf("unexpected error message: %s", got)
+	}
+}
+
 func TestConfirm_Yes_Env(t *testing.T) {
 	t.Setenv("CONOHA_YES", "1")
 	ok, err := Confirm("Delete?")
