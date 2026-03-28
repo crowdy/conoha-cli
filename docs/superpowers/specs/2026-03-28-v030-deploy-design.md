@@ -22,6 +22,11 @@ Target user: 1-person developer deploying to 1 VM, Dokku-style git push workflow
 | VM base path | `/opt/conoha/` | Standard location, non-home directory, consistent naming |
 | Script upload method | SSH exec with heredoc (stdin pipe) | No SCP dependency, works through any SSH config, single connection |
 | Environment passing | `--env KEY=VALUE` exported before script | Shell-safe quoting with single quotes + escaping |
+| Env key validation | `^[A-Za-z_][A-Za-z0-9_]*$` regex | Prevent shell injection via malformed env keys |
+| App name validation | `^[a-zA-Z0-9][a-zA-Z0-9_-]*$` regex | Prevent shell injection in generated bash scripts |
+| SSH connect timeout | 30 seconds | Prevent indefinite hang when server is unreachable |
+| `--env` flag type | `StringArray` (not `StringSlice`) | `StringSlice` splits on commas within values — breaks `--env FOO=a,b` |
+| Passphrase-protected keys | Not supported (Phase 2+) | `ssh.ParsePrivateKey` fails on encrypted keys; document limitation |
 
 ## 2. New Package: `internal/ssh/`
 
@@ -85,9 +90,10 @@ func Connect(cfg ConnectConfig) (*ssh.Client, error) {
     }
 
     config := &ssh.ClientConfig{
-        User: cfg.User,
-        Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+        User:            cfg.User,
+        Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
         HostKeyCallback: ssh.InsecureIgnoreHostKey(), // personal VPS use
+        Timeout:         30 * time.Second,
     }
 
     addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
@@ -109,6 +115,7 @@ func RunScript(client *ssh.Client, script []byte, env map[string]string, stdout,
     session.Stderr = stderr
 
     // Build command: export env vars, then execute script from stdin
+    // NOTE: env keys must be validated before calling RunScript (see ValidateEnvKey)
     var envPrefix string
     for k, v := range env {
         // Shell-safe: single-quote value, escape embedded single quotes
@@ -126,6 +133,43 @@ func RunScript(client *ssh.Client, script []byte, env map[string]string, stdout,
         return -1, err
     }
     return 0, nil
+}
+```
+
+### Input Validation Helpers
+
+```go
+// internal/ssh/validate.go
+
+package ssh
+
+import "regexp"
+
+var (
+    appNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+    envKeyRegex  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
+
+// ValidateAppName checks that the app name is safe for use in file paths and shell scripts.
+func ValidateAppName(name string) error {
+    if name == "" {
+        return fmt.Errorf("app name cannot be empty")
+    }
+    if len(name) > 64 {
+        return fmt.Errorf("app name too long (max 64 characters)")
+    }
+    if !appNameRegex.MatchString(name) {
+        return fmt.Errorf("invalid app name %q: must match [a-zA-Z0-9][a-zA-Z0-9_-]*", name)
+    }
+    return nil
+}
+
+// ValidateEnvKey checks that an environment variable key is a valid shell identifier.
+func ValidateEnvKey(key string) error {
+    if !envKeyRegex.MatchString(key) {
+        return fmt.Errorf("invalid env key %q: must match [A-Za-z_][A-Za-z0-9_]*", key)
+    }
+    return nil
 }
 ```
 
@@ -222,7 +266,7 @@ var deployCmd = &cobra.Command{
             return err
         }
 
-        ip, err := getServerIP(s)
+        ip, err := internalssh.ServerIP(s)
         if err != nil {
             return err
         }
@@ -234,7 +278,7 @@ var deployCmd = &cobra.Command{
         identity, _ := cmd.Flags().GetString("identity")
 
         if identity == "" {
-            identity = resolveKeyPath(s.KeyName)
+            identity = internalssh.ResolveKeyPath(s.KeyName)
         }
         if identity == "" {
             return fmt.Errorf("no SSH key found; specify --identity or ensure ~/.ssh/conoha_<keyname> exists")
@@ -246,12 +290,15 @@ var deployCmd = &cobra.Command{
             return fmt.Errorf("read script %s: %w", scriptPath, err)
         }
 
-        // Parse --env flags
+        // Parse and validate --env flags
         env := make(map[string]string)
         for _, e := range envFlags {
             k, v, ok := strings.Cut(e, "=")
             if !ok {
                 return fmt.Errorf("invalid --env format %q (expected KEY=VALUE)", e)
+            }
+            if err := internalssh.ValidateEnvKey(k); err != nil {
+                return err
             }
             env[k] = v
         }
@@ -293,6 +340,7 @@ var deployCmd = &cobra.Command{
 | Script file exists | `os.ReadFile` fails | `read script <path>: <err>` |
 | SSH key available | No `--identity` and no auto-detected key | `no SSH key found; specify --identity...` |
 | Env format | Missing `=` | `invalid --env format "FOO" (expected KEY=VALUE)` |
+| Env key name | Not `^[A-Za-z_][A-Za-z0-9_]*$` | `invalid env key "...": must match ...` |
 | Server exists | `FindServer` fails | API error (existing handling) |
 | Server has IP | No IPv4 | `no IPv4 address found...` (existing) |
 
@@ -396,7 +444,7 @@ var initCmd = &cobra.Command{
             return err
         }
 
-        ip, err := getServerIP(s)
+        ip, err := internalssh.ServerIP(s)
         if err != nil {
             return err
         }
@@ -408,13 +456,16 @@ var initCmd = &cobra.Command{
                 return err
             }
         }
+        if err := internalssh.ValidateAppName(appName); err != nil {
+            return err
+        }
 
         user, _ := cmd.Flags().GetString("user")
         port, _ := cmd.Flags().GetString("port")
         identity, _ := cmd.Flags().GetString("identity")
 
         if identity == "" {
-            identity = resolveKeyPath(s.KeyName)
+            identity = internalssh.ResolveKeyPath(s.KeyName)
         }
         if identity == "" {
             return fmt.Errorf("no SSH key found; specify --identity or ensure ~/.ssh/conoha_<keyname> exists")
@@ -495,21 +546,32 @@ set -euo pipefail
 
 APP_NAME="%s"
 WORK_DIR="/opt/conoha/${APP_NAME}"
+DEPLOY_BRANCH="main"
 
-echo "==> Checking out code..."
-git --work-tree="$WORK_DIR" --git-dir="$(dirname "$0")/.." checkout -f
+# Read pushed refs from stdin; only deploy on main branch push
+while read -r oldrev newrev refname; do
+    branch=$(basename "$refname")
+    if [ "$branch" != "$DEPLOY_BRANCH" ]; then
+        echo "Pushed to $branch — skipping deploy (only $DEPLOY_BRANCH triggers deploy)."
+        continue
+    fi
 
-cd "$WORK_DIR"
+    echo "==> Checking out $DEPLOY_BRANCH..."
+    GIT_DIR="$(dirname "$0")/.."
+    git --work-tree="$WORK_DIR" --git-dir="$GIT_DIR" checkout -f "$DEPLOY_BRANCH"
 
-if [ -f docker-compose.yml ] || [ -f docker-compose.yaml ] || [ -f compose.yml ] || [ -f compose.yaml ]; then
-    echo "==> Building and starting containers..."
-    docker compose up -d --build --remove-orphans
-    echo "==> Deploy complete!"
-    docker compose ps
-else
-    echo "Warning: No compose file found in $WORK_DIR"
-    echo "Push a docker-compose.yml to enable auto-deploy."
-fi
+    cd "$WORK_DIR"
+
+    if [ -f docker-compose.yml ] || [ -f docker-compose.yaml ] || [ -f compose.yml ] || [ -f compose.yaml ]; then
+        echo "==> Building and starting containers..."
+        docker compose up -d --build --remove-orphans
+        echo "==> Deploy complete!"
+        docker compose ps
+    else
+        echo "Warning: No compose file found in $WORK_DIR"
+        echo "Push a docker-compose.yml to enable auto-deploy."
+    fi
+done
 HOOK
 chmod +x "$REPO_DIR/hooks/post-receive"
 
@@ -591,6 +653,7 @@ This is already an indirect dependency via `golang.org/x/term`. Adding direct us
 |------|--------|-------------|
 | `internal/ssh/exec.go` | **New** | Connect, RunScript, RunCommand |
 | `internal/ssh/resolve.go` | **New** | ServerIP, ResolveKeyPath (moved from cmd/server/ssh.go) |
+| `internal/ssh/validate.go` | **New** | ValidateAppName, ValidateEnvKey |
 | `cmd/server/deploy.go` | **New** | `server deploy` command |
 | `cmd/app/app.go` | **New** | `app` command group |
 | `cmd/app/init.go` | **New** | `app init` command |
@@ -606,8 +669,9 @@ This is already an indirect dependency via `golang.org/x/term`. Adding direct us
 ### Unit Tests
 
 - `internal/ssh/resolve_test.go`: ServerIP (floating/fixed/none), ResolveKeyPath (exists/missing/empty)
-- `cmd/server/deploy_test.go`: flag parsing, env validation (KEY=VALUE format)
-- `cmd/app/init_test.go`: generateInitScript output validation
+- `internal/ssh/validate_test.go`: ValidateAppName (valid/invalid/injection/too-long), ValidateEnvKey (valid/invalid/injection)
+- `cmd/server/deploy_test.go`: flag parsing, env validation (KEY=VALUE format, invalid keys rejected)
+- `cmd/app/init_test.go`: generateInitScript output validation, app name validation
 
 ### Integration Tests (manual)
 
@@ -645,3 +709,5 @@ This is already an indirect dependency via `golang.org/x/term`. Adding direct us
 - SSL/domain configuration — user's Compose responsibility
 - Multi-server deploy — not in scope
 - Password-based SSH auth — key-only
+- Passphrase-protected SSH keys — `ssh.ParsePrivateKey` fails on encrypted keys; add `ParsePrivateKeyWithPassphrase` fallback in Phase 2+
+- `--dry-run` flag for `server deploy` — show generated command without connecting
