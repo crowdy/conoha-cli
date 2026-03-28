@@ -50,7 +50,6 @@ func ResolveKeyPath(keyName string) string {
 	}
 	keyPath := filepath.Join(home, ".ssh", "conoha_"+keyName)
 	if _, err := os.Stat(keyPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: key file %s not found, connecting without key\n", keyPath)
 		return ""
 	}
 	return keyPath

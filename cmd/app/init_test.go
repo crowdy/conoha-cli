@@ -16,8 +16,9 @@ func TestGenerateInitScript(t *testing.T) {
 		{"set strict", "set -euo pipefail"},
 		{"docker install", "get.docker.com"},
 		{"git install", "apt-get install -y -qq git"},
-		{"repo dir", "/opt/conoha/myapp.git"},
-		{"work dir", "/opt/conoha/myapp"},
+		{"app name var", `APP_NAME="myapp"`},
+		{"repo dir", "/opt/conoha/${APP_NAME}.git"},
+		{"work dir", "/opt/conoha/${APP_NAME}"},
 		{"bare repo init", "git init --bare"},
 		{"post-receive hook", "hooks/post-receive"},
 		{"docker compose up", "docker compose up -d --build"},
@@ -38,10 +39,7 @@ func TestGenerateInitScript(t *testing.T) {
 func TestGenerateInitScriptAppNameEmbedded(t *testing.T) {
 	script := string(generateInitScript("test-app-123"))
 
-	if !strings.Contains(script, "/opt/conoha/test-app-123.git") {
-		t.Error("script should contain app name in repo path")
-	}
-	if !strings.Contains(script, "/opt/conoha/test-app-123") {
-		t.Error("script should contain app name in work dir path")
+	if !strings.Contains(script, `APP_NAME="test-app-123"`) {
+		t.Error("script should set APP_NAME variable with the app name")
 	}
 }

@@ -114,8 +114,8 @@ if ! command -v git &>/dev/null; then
 fi
 
 APP_NAME="%s"
-REPO_DIR="/opt/conoha/%s.git"
-WORK_DIR="/opt/conoha/%s"
+REPO_DIR="/opt/conoha/${APP_NAME}.git"
+WORK_DIR="/opt/conoha/${APP_NAME}"
 
 echo "==> Creating directories..."
 mkdir -p "$WORK_DIR"
@@ -132,7 +132,7 @@ cat > "$REPO_DIR/hooks/post-receive" << 'HOOK'
 set -euo pipefail
 
 APP_NAME="%s"
-WORK_DIR="/opt/conoha/%s"
+WORK_DIR="/opt/conoha/${APP_NAME}"
 DEPLOY_BRANCH="main"
 
 # Read pushed refs from stdin; only deploy on main branch push
@@ -163,5 +163,5 @@ HOOK
 chmod +x "$REPO_DIR/hooks/post-receive"
 
 echo "==> Done!"
-`, appName, appName, appName, appName, appName))
+`, appName, appName))
 }
