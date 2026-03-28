@@ -20,6 +20,11 @@ Target user: 1-person developer, 1 VM, same as Phase 1.
 | Post-action output | `docker compose ps` | Consistent with post-receive hook pattern |
 | Boilerplate | Shared `connectToApp` helper | 5 commands share identical SSH connection setup |
 | `.dockerignore` parser | Simple glob only | `filepath.Match` sufficient; `!` and `**` not supported |
+| Deploy pre-flight | Check compose file exists locally | Fail fast before uploading tar |
+| Deploy clean | `rm -rf` work dir before tar extract | Prevent stale files from previous deploys |
+| Logs --follow + Ctrl+C | Rely on SSH connection teardown | SIGINT → process exit → client.Close() → session ends → remote process killed |
+| Symlinks in tar | Skip with warning | Avoid archiving broken symlinks as empty files |
+| Trailing slash in .dockerignore | Strip before matching | Docker treats `logs/` and `logs` identically |
 
 ## 1. New Function: `RunWithStdin`
 
@@ -189,6 +194,11 @@ var deployCmd = &cobra.Command{
         }
         defer func() { _ = ctx.Client.Close() }()
 
+        // Pre-flight: check compose file exists locally
+        if !hasComposeFile(".") {
+            return fmt.Errorf("no docker-compose.yml/yaml or compose.yml/yaml found in current directory")
+        }
+
         // Load .dockerignore
         patterns, err := loadIgnorePatterns(".")
         if err != nil {
@@ -203,9 +213,9 @@ var deployCmd = &cobra.Command{
         }
         fmt.Fprintf(os.Stderr, "Uploading to %s (%s)...\n", ctx.Server.Name, ctx.IP)
 
-        // Transfer tar
+        // Transfer tar (clean deploy: remove old files first)
         workDir := "/opt/conoha/" + ctx.AppName
-        tarCmd := fmt.Sprintf("mkdir -p %s && tar xzf - -C %s", workDir, workDir)
+        tarCmd := fmt.Sprintf("rm -rf %s && mkdir -p %s && tar xzf - -C %s", workDir, workDir, workDir)
         exitCode, err := internalssh.RunWithStdin(ctx.Client, tarCmd, &buf, os.Stdout, os.Stderr)
         if err != nil {
             return fmt.Errorf("upload failed: %w", err)
@@ -228,6 +238,20 @@ var deployCmd = &cobra.Command{
         fmt.Fprintf(os.Stderr, "Deploy complete.\n")
         return nil
     },
+}
+```
+
+### Pre-flight Helper
+
+```go
+// hasComposeFile checks if a docker compose file exists in dir.
+func hasComposeFile(dir string) bool {
+    for _, name := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
+        if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+            return true
+        }
+    }
+    return false
 }
 ```
 
@@ -270,12 +294,16 @@ func loadIgnorePatterns(dir string) ([]string, error) {
         if strings.HasPrefix(line, "!") {
             continue
         }
+        // Strip trailing slash (Docker treats "logs/" and "logs" identically)
+        line = strings.TrimRight(line, "/")
         patterns = append(patterns, line)
     }
     return patterns, scanner.Err()
 }
 
 // shouldExclude checks if a path matches any ignore pattern.
+// Limitations: patterns match top-level directory names and file basenames only.
+// Nested directory matching requires explicit paths (e.g., "src/vendor").
 func shouldExclude(path string, patterns []string) bool {
     base := filepath.Base(path)
     for _, p := range patterns {
@@ -330,6 +358,12 @@ func createTarGz(dir string, patterns []string, w io.Writer) error {
             if d.IsDir() {
                 return filepath.SkipDir
             }
+            return nil
+        }
+
+        // Skip symlinks (avoid archiving as empty files)
+        if d.Type()&os.ModeSymlink != 0 {
+            fmt.Fprintf(os.Stderr, "Warning: skipping symlink %s\n", rel)
             return nil
         }
 
@@ -417,6 +451,10 @@ var logsCmd = &cobra.Command{
     },
 }
 ```
+
+### `--follow` and Ctrl+C
+
+When `--follow` is used, `RunCommand` blocks on `session.Run()` streaming logs indefinitely. On Ctrl+C (SIGINT), the Go process exits, which triggers `defer client.Close()`, closing the SSH connection and terminating the remote `docker compose logs -f` process. No explicit signal handling needed.
 
 ## 6. Command: `app status`
 
@@ -513,7 +551,12 @@ var restartCmd = &cobra.Command{
 
 ## 9. Refactor: `app init` to use `connectToApp`
 
-`cmd/app/init.go`의 보일러플레이트를 `connectToApp`으로 교체. `generateInitScript` 로직은 그대로 유지.
+`cmd/app/init.go`의 보일러플레이트를 `connectToApp`으로 교체:
+
+- Replace manual flag registration in `init()` with `addAppFlags(initCmd)`
+- Replace ~30 lines of server resolution + SSH connection setup with `connectToApp(cmd, args)`
+- Keep `generateInitScript` and `internalssh.RunScript` call (init uses RunScript, not RunCommand)
+- Keep post-init output (git remote URL) using `ctx.User`, `ctx.IP`, `ctx.AppName`
 
 ## 10. File Summary
 
@@ -541,7 +584,7 @@ var restartCmd = &cobra.Command{
 
 - `internal/ssh/exec_test.go`: `RunWithStdin` nil client test
 - `cmd/app/tar_test.go`: create tar, verify contents, verify exclusion works
-- `cmd/app/dockerignore_test.go`: pattern loading, `.git/` always excluded, comment/blank lines skipped, negation ignored
+- `cmd/app/dockerignore_test.go`: pattern loading, `.git/` always excluded, comment/blank lines skipped, negation ignored, trailing slash stripped
 - `cmd/app/connect_test.go`: `addAppFlags` registers expected flags
 
 ### Integration Tests (manual)
@@ -579,5 +622,7 @@ var restartCmd = &cobra.Command{
 - `app list` — list deployed apps on a server
 - `.dockerignore` negation patterns (`!`)
 - `.dockerignore` recursive patterns (`**`)
-- Symlink handling in tar
+- `.dockerignore` nested directory matching (patterns match top-level and basename only)
+- Symlink resolution in tar (symlinks are skipped with warning)
 - Multi-service deploy (deploy specific services only)
+- In-memory tar size limit (large projects with assets may exhaust memory; users should use .dockerignore)
