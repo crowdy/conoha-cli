@@ -819,9 +819,6 @@ func TestAttachPort(t *testing.T) {
 	}))
 	defer networkTS.Close()
 
-	computeTS.EnableHTTP2 = false
-	networkTS.EnableHTTP2 = false
-
 	t.Setenv("CONOHA_ENDPOINT", computeTS.URL)
 	computeClient := newTestClient(computeTS)
 
