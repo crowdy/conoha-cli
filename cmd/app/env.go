@@ -60,8 +60,13 @@ var envSetCmd = &cobra.Command{
 			return fmt.Errorf("env set exited with code %d", exitCode)
 		}
 
-		for k, v := range env {
-			fmt.Fprintf(os.Stderr, "Set %s=%s\n", k, v)
+		keys := make([]string, 0, len(env))
+		for k := range env {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(os.Stderr, "Set %s\n", k)
 		}
 		return nil
 	},
