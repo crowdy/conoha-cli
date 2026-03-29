@@ -329,8 +329,37 @@ conoha app restart <server> --app-name myapp
 - `RunWithStdin`: SSH command execution with stdin data piping
 - `.dockerignore` parser: simple glob patterns, always excludes `.git/`
 
-### Phase 3+ (future)
+---
 
-- `app env` (remote env var management)
-- `app destroy` (remove deployment)
-- `app list` (list deployed apps)
+## v0.3.2: App Management Commands (Phase 3)
+
+App environment variable management, destruction, and listing.
+
+### `app env`
+
+```
+conoha app env set <server> --app-name myapp KEY=VALUE [KEY=VALUE...]
+conoha app env get <server> --app-name myapp KEY
+conoha app env list <server> --app-name myapp
+conoha app env unset <server> --app-name myapp KEY [KEY...]
+```
+
+- Environment variables stored in `/opt/conoha/{app-name}.env.server`
+- `app deploy` copies `.env.server` → `.env` for docker compose
+
+### `app destroy`
+
+```
+conoha app destroy <server> --app-name myapp
+```
+
+- Stops containers, removes work dir, git repo, and env file
+- Requires confirmation
+
+### `app list`
+
+```
+conoha app list <server>
+```
+
+- Lists all deployed apps with container status (running/stopped/no containers)
