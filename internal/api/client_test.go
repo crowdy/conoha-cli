@@ -136,6 +136,28 @@ func TestBaseURL(t *testing.T) {
 	}
 }
 
+func TestBaseURLWithExtServiceMap(t *testing.T) {
+	client := NewClient("c3j1", "tok", "tenant1")
+
+	tests := []struct {
+		service  string
+		expected string
+	}{
+		{"image", "https://image-service.c3j1.conoha.io"},
+		{"load-balancer", "https://lbaas.c3j1.conoha.io"},
+		{"compute", "https://compute.c3j1.conoha.io"},
+		{"networking", "https://networking.c3j1.conoha.io"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.service, func(t *testing.T) {
+			url := client.BaseURL(tt.service)
+			if url != tt.expected {
+				t.Errorf("BaseURL(%q) = %q, want %q", tt.service, url, tt.expected)
+			}
+		})
+	}
+}
+
 func TestBaseURLWithEndpointOverride(t *testing.T) {
 	t.Setenv("CONOHA_ENDPOINT", "https://staging.internal.gmo.jp")
 	client := NewClient("c3j1", "tok", "tenant1")
