@@ -7,6 +7,8 @@
 
 ConoHa VPS3 API 用のコマンドラインインターフェースです。Go で書かれたシングルバイナリで、エージェントフレンドリーな設計を採用しています。
 
+**[ドキュメントサイト](https://crowdy.github.io/conoha-cli-pages/)** — ガイド・実践デプロイ例・コマンドリファレンス
+
 > **注意**: 本ツールは VPS3 専用です。旧 VPS2 用の CLI（hironobu-s/conoha-vps、miyabisun/conoha-cli）とは互換性がありません。
 
 ## 特徴
@@ -78,7 +80,7 @@ conoha server rename <server-id-or-name> new-name
 | コマンド | 説明 |
 |---------|------|
 | `conoha auth` | 認証管理（login / logout / status / list / switch / token / remove） |
-| `conoha server` | サーバー管理（list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console / ips / metadata） |
+| `conoha server` | サーバー管理（list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console / ips / metadata / ssh / deploy / attach-volume / detach-volume） |
 | `conoha flavor` | フレーバー一覧・詳細（list / show） |
 | `conoha keypair` | SSH キーペア管理（list / create / delete） |
 | `conoha volume` | ブロックストレージ管理（list / show / create / delete / types / backup） |
@@ -88,6 +90,7 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS 管理（domain / record） |
 | `conoha storage` | オブジェクトストレージ（container / ls / cp / rm / publish） |
 | `conoha identity` | アイデンティティ管理（credential / subuser / role） |
+| `conoha app` | アプリデプロイ・管理（init / deploy / logs / status / stop / restart / env / destroy / list） |
 | `conoha config` | CLI 設定管理（show / set / path） |
 
 ## サーバー作成

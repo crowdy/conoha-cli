@@ -7,6 +7,8 @@
 
 ConoHa VPS3 API용 커맨드라인 인터페이스입니다. Go로 작성된 싱글 바이너리로, 에이전트 친화적 설계를 채택하고 있습니다.
 
+**[문서 사이트](https://crowdy.github.io/conoha-cli-pages/)** — 가이드, 실전 배포 예제, 커맨드 레퍼런스
+
 > **참고**: 이 도구는 VPS3 전용입니다. 구 VPS2용 CLI(hironobu-s/conoha-vps, miyabisun/conoha-cli)와는 호환되지 않습니다.
 
 ## 특징
@@ -78,7 +80,7 @@ conoha server rename <server-id-or-name> new-name
 | 명령어 | 설명 |
 |--------|------|
 | `conoha auth` | 인증 관리 (login / logout / status / list / switch / token / remove) |
-| `conoha server` | 서버 관리 (list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console) |
+| `conoha server` | 서버 관리 (list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console / ips / metadata / ssh / deploy / attach-volume / detach-volume) |
 | `conoha flavor` | 플레이버 조회 (list / show) |
 | `conoha keypair` | SSH 키페어 관리 (list / create / delete) |
 | `conoha volume` | 블록 스토리지 관리 (list / show / create / delete / types / backup) |
@@ -88,6 +90,7 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS 관리 (domain / record) |
 | `conoha storage` | 오브젝트 스토리지 (container / ls / cp / rm / publish) |
 | `conoha identity` | 아이덴티티 관리 (credential / subuser / role) |
+| `conoha app` | 앱 배포 및 관리 (init / deploy / logs / status / stop / restart / env / destroy / list) |
 | `conoha config` | CLI 설정 관리 (show / set / path) |
 
 ## 설정

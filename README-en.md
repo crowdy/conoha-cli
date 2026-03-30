@@ -7,6 +7,8 @@
 
 A command-line interface for the ConoHa VPS3 API. Written in Go as a single binary with an agent-friendly design.
 
+**[Documentation](https://crowdy.github.io/conoha-cli-pages/)** — Guides, deployment examples, and command reference
+
 > **Note**: This tool is for VPS3 only. It is not compatible with legacy VPS2 CLIs (hironobu-s/conoha-vps, miyabisun/conoha-cli).
 
 ## Features
@@ -78,7 +80,7 @@ conoha server rename <server-id-or-name> new-name
 | Command | Description |
 |---------|-------------|
 | `conoha auth` | Authentication (login / logout / status / list / switch / token / remove) |
-| `conoha server` | Server management (list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console) |
+| `conoha server` | Server management (list / show / create / delete / start / stop / reboot / resize / rebuild / rename / console / ips / metadata / ssh / deploy / attach-volume / detach-volume) |
 | `conoha flavor` | Flavor listing (list / show) |
 | `conoha keypair` | SSH keypair management (list / create / delete) |
 | `conoha volume` | Block storage (list / show / create / delete / types / backup) |
@@ -88,6 +90,7 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS management (domain / record) |
 | `conoha storage` | Object storage (container / ls / cp / rm / publish) |
 | `conoha identity` | Identity management (credential / subuser / role) |
+| `conoha app` | App deployment & management (init / deploy / logs / status / stop / restart / env / destroy / list) |
 | `conoha config` | CLI configuration (show / set / path) |
 
 ## Configuration
