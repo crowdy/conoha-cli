@@ -39,7 +39,15 @@ func NewClient(region, token, tenantID string) *Client {
 	}
 }
 
-// intServiceMap maps external service names to internal API path segments.
+// extServiceMap maps logical service names to external API hostnames
+// where they differ from the logical name.
+var extServiceMap = map[string]string{
+	"image":         "image-service",
+	"load-balancer": "lbaas",
+}
+
+// intServiceMap maps logical service names to internal API path segments
+// where they differ from the logical name.
 var intServiceMap = map[string]string{
 	"image":      "image-service",
 	"networking": "network",
@@ -59,7 +67,11 @@ func (c *Client) BaseURL(service string) string {
 		}
 		return ep
 	}
-	return fmt.Sprintf("https://%s.%s.conoha.io", service, c.Region)
+	hostname := service
+	if mapped, ok := extServiceMap[hostname]; ok {
+		hostname = mapped
+	}
+	return fmt.Sprintf("https://%s.%s.conoha.io", hostname, c.Region)
 }
 
 // Do executes an HTTP request with auth headers and error handling.
