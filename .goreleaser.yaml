@@ -22,6 +22,16 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+brews:
+  - repository:
+      owner: crowdy
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    name: conoha
+    homepage: "https://crowdy.github.io/conoha-cli-pages/"
+    description: "CLI tool for ConoHa VPS3 API"
+    license: "MIT"
+
 changelog:
   sort: asc
   filters:
