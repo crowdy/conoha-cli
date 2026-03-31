@@ -97,6 +97,21 @@ var showCmd = &cobra.Command{
 			} else {
 				imageDisplay = fmt.Sprintf("(deleted or unavailable) %s", server.ImageID)
 			}
+		} else {
+			// Try to resolve from boot volume metadata (#35)
+			volumeAPI := api.NewVolumeAPI(client)
+			if attachments, err := compute.ListVolumeAttachments(server.ID); err == nil {
+				for _, a := range attachments {
+					if a.Device == "/dev/vda" {
+						if vol, err := volumeAPI.GetVolume(a.VolumeID); err == nil {
+							if imgName := vol.ImageMetadata["image_name"]; imgName != "" {
+								imageDisplay = fmt.Sprintf("%s (booted from volume %s)", imgName, a.VolumeID[:8])
+							}
+						}
+						break
+					}
+				}
+			}
 		}
 
 		// Human-readable key-value output
