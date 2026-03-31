@@ -96,12 +96,23 @@ func TestCSVFormatter(t *testing.T) {
 	}
 }
 
-func TestCSVFormatterNonSlice(t *testing.T) {
+func TestCSVFormatterSingleStruct(t *testing.T) {
 	var buf bytes.Buffer
 	f := &CSVFormatter{}
 	err := f.Format(&buf, testItem{Name: "a", Value: 1})
-	if err == nil {
-		t.Error("expected error for non-slice input")
+	if err != nil {
+		t.Fatalf("Format() error: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines (header + 1 row), got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "name") {
+		t.Errorf("expected header with 'name', got: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], "a") {
+		t.Errorf("expected data with 'a', got: %s", lines[1])
 	}
 }
 

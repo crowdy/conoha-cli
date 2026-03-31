@@ -17,9 +17,13 @@ func (f *CSVFormatter) Format(w io.Writer, data any) error {
 		val = val.Elem()
 	}
 
-	// Handle slice of structs
+	// Handle single struct by wrapping as one-element slice
 	if val.Kind() != reflect.Slice {
-		return fmt.Errorf("csv formatter requires a slice, got %T", data)
+		if val.Kind() == reflect.Struct {
+			val = reflect.Append(reflect.MakeSlice(reflect.SliceOf(val.Type()), 0, 1), val)
+		} else {
+			return fmt.Errorf("csv formatter requires a struct or slice, got %T", data)
+		}
 	}
 	if val.Len() == 0 {
 		return nil
