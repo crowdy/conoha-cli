@@ -71,19 +71,6 @@ func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 	return s, nil
 }
 
-// RenameServer updates the server name.
-func (a *ComputeAPI) RenameServer(id, newName string) (*model.Server, error) {
-	url := fmt.Sprintf("%s/servers/%s", a.baseURL(), id)
-	body := map[string]any{
-		"server": map[string]string{"name": newName},
-	}
-	var resp model.ServerDetail
-	if err := a.Client.Put(url, body, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Server, nil
-}
-
 // CreateServer creates a new server.
 func (a *ComputeAPI) CreateServer(req *model.ServerCreateRequest) (*model.Server, error) {
 	url := fmt.Sprintf("%s/servers", a.baseURL())

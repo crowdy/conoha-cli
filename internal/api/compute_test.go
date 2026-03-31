@@ -127,44 +127,6 @@ func TestFindServer(t *testing.T) {
 	})
 }
 
-func TestRenameServer(t *testing.T) {
-	const serverID = "srv-999"
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut {
-			t.Errorf("expected PUT, got %s", r.Method)
-		}
-		if !strings.HasSuffix(r.URL.Path, "/v2.1/servers/"+serverID) {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
-		serverMap, ok := body["server"].(map[string]any)
-		if !ok {
-			t.Errorf("expected 'server' key in body")
-		} else if serverMap["name"] != "new-name" {
-			t.Errorf("expected name 'new-name', got %v", serverMap["name"])
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"server": map[string]any{
-				"id":   serverID,
-				"name": "new-name",
-			},
-		})
-	}))
-	defer ts.Close()
-	t.Setenv("CONOHA_ENDPOINT", ts.URL)
-
-	api := NewComputeAPI(newTestClient(ts))
-	server, err := api.RenameServer(serverID, "new-name")
-	if err != nil {
-		t.Fatalf("RenameServer() error: %v", err)
-	}
-	if server.Name != "new-name" {
-		t.Errorf("expected name 'new-name', got %q", server.Name)
-	}
-}
-
 func TestCreateServer(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
