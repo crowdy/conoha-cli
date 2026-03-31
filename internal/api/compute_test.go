@@ -125,6 +125,106 @@ func TestFindServer(t *testing.T) {
 			t.Errorf("expected ID 'srv-456', got %q", server.ID)
 		}
 	})
+
+	t.Run("by nametag", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"servers": []map[string]any{
+					{
+						"id":     "srv-789",
+						"name":   "random-vm-name",
+						"status": "ACTIVE",
+						"metadata": map[string]string{
+							"instance_name_tag": "my-web-server",
+						},
+					},
+				},
+			})
+		}))
+		defer ts.Close()
+		t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+		api := NewComputeAPI(newTestClient(ts))
+		server, err := api.FindServer("my-web-server")
+		if err != nil {
+			t.Fatalf("FindServer() error: %v", err)
+		}
+		if server.ID != "srv-789" {
+			t.Errorf("expected ID 'srv-789', got %q", server.ID)
+		}
+	})
+
+	t.Run("name wins over nametag", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"servers": []map[string]any{
+					{
+						"id":     "srv-name",
+						"name":   "foo",
+						"status": "ACTIVE",
+					},
+					{
+						"id":     "srv-tag",
+						"name":   "other-vm",
+						"status": "ACTIVE",
+						"metadata": map[string]string{
+							"instance_name_tag": "foo",
+						},
+					},
+				},
+			})
+		}))
+		defer ts.Close()
+		t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+		api := NewComputeAPI(newTestClient(ts))
+		server, err := api.FindServer("foo")
+		if err != nil {
+			t.Fatalf("FindServer() error: %v", err)
+		}
+		if server.ID != "srv-name" {
+			t.Errorf("expected name match 'srv-name', got %q (nametag should not win)", server.ID)
+		}
+	})
+
+	t.Run("duplicate nametag returns error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"servers": []map[string]any{
+					{
+						"id":     "srv-dup-1",
+						"name":   "vm-a",
+						"status": "ACTIVE",
+						"metadata": map[string]string{
+							"instance_name_tag": "dup",
+						},
+					},
+					{
+						"id":     "srv-dup-2",
+						"name":   "vm-b",
+						"status": "ACTIVE",
+						"metadata": map[string]string{
+							"instance_name_tag": "dup",
+						},
+					},
+				},
+			})
+		}))
+		defer ts.Close()
+		t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+		api := NewComputeAPI(newTestClient(ts))
+		_, err := api.FindServer("dup")
+		if err == nil {
+			t.Fatal("expected error for duplicate nametag, got nil")
+		}
+		if !strings.Contains(err.Error(), "multiple servers") {
+			t.Errorf("expected 'multiple servers' in error, got: %v", err)
+		}
+	})
 }
 
 func TestCreateServer(t *testing.T) {
