@@ -80,6 +80,9 @@ var createCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("flavor %q not found: %w", flavorID, err)
 			}
+			if !isUsableFlavor(flavor.Name) {
+				fmt.Fprintf(os.Stderr, "Warning: flavor %q may not be supported via public API\n", flavor.Name)
+			}
 		} else {
 			flavor, err = selectFlavor(compute)
 			if err != nil {
@@ -95,17 +98,17 @@ var createCmd = &cobra.Command{
 			}
 		}
 
+		// Fetch image details (used for pre-flight validation and summary display)
+		imageAPI := api.NewImageAPI(client)
+		img, err := imageAPI.GetImage(imageID)
+		if err != nil {
+			return fmt.Errorf("fetching image details: %w", err)
+		}
+
 		// Pre-flight: validate image memory requirements (#32)
-		{
-			imageAPI := api.NewImageAPI(client)
-			img, err := imageAPI.GetImage(imageID)
-			if err != nil {
-				return fmt.Errorf("fetching image details: %w", err)
-			}
-			if img.MinRAM > 0 && flavor.RAM < img.MinRAM {
-				return fmt.Errorf("selected flavor %q has %s RAM, but image %q requires at least %s. Please choose a larger flavor",
-					flavor.Name, formatMB(flavor.RAM), img.Name, formatMB(img.MinRAM))
-			}
+		if img.MinRAM > 0 && flavor.RAM < img.MinRAM {
+			return fmt.Errorf("selected flavor %q has %s RAM, but image %q requires at least %s. Please choose a larger flavor",
+				flavor.Name, formatMB(flavor.RAM), img.Name, formatMB(img.MinRAM))
 		}
 
 		if keyName == "" {
@@ -168,12 +171,8 @@ var createCmd = &cobra.Command{
 			req.Server.ImageRef = imageID
 		}
 
-		// Resolve names for summary
-		imageAPI := api.NewImageAPI(client)
-		imageName := imageID
-		if img, err := imageAPI.GetImage(imageID); err == nil {
-			imageName = img.Name
-		}
+		// Use image name from earlier fetch
+		imageName := img.Name
 
 		// Print summary
 		fmt.Fprintln(os.Stderr, "=== Server Create Summary ===")

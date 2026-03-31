@@ -88,6 +88,10 @@ var showCmd = &cobra.Command{
 			flavorDisplay = fmt.Sprintf("%s (%d vCPU, %s RAM)", f.Name, f.VCPUs, formatMB(f.RAM))
 		}
 
+		// Fetch volume attachments once (used for image resolution and display)
+		volumeAPI := api.NewVolumeAPI(client)
+		attachments, _ := compute.ListVolumeAttachments(server.ID)
+
 		// Resolve image name
 		imageDisplay := "(not set — booted from volume)"
 		if server.ImageID != "" {
@@ -99,17 +103,18 @@ var showCmd = &cobra.Command{
 			}
 		} else {
 			// Try to resolve from boot volume metadata (#35)
-			volumeAPI := api.NewVolumeAPI(client)
-			if attachments, err := compute.ListVolumeAttachments(server.ID); err == nil {
-				for _, a := range attachments {
-					if a.Device == "/dev/vda" {
-						if vol, err := volumeAPI.GetVolume(a.VolumeID); err == nil {
-							if imgName := vol.ImageMetadata["image_name"]; imgName != "" {
-								imageDisplay = fmt.Sprintf("%s (booted from volume %s)", imgName, a.VolumeID[:8])
+			for _, a := range attachments {
+				if a.Device == "/dev/vda" {
+					if vol, err := volumeAPI.GetVolume(a.VolumeID); err == nil {
+						if imgName := vol.ImageMetadata["image_name"]; imgName != "" {
+							volID := a.VolumeID
+							if len(volID) > 8 {
+								volID = volID[:8]
 							}
+							imageDisplay = fmt.Sprintf("%s (booted from volume %s)", imgName, volID)
 						}
-						break
 					}
+					break
 				}
 			}
 		}
@@ -118,8 +123,7 @@ var showCmd = &cobra.Command{
 		printServerDetail(server, flavorDisplay, imageDisplay)
 
 		// Volume attachments (non-fatal)
-		if attachments, err := compute.ListVolumeAttachments(server.ID); err == nil && len(attachments) > 0 {
-			volumeAPI := api.NewVolumeAPI(client)
+		if len(attachments) > 0 {
 			fmt.Println("Volumes:")
 			for _, a := range attachments {
 				size := ""
