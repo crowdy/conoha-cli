@@ -536,7 +536,8 @@ func waitForServerStatus(compute *api.ComputeAPI, id, target string, wc *cmdutil
 func selectSecurityGroups(networkAPI *api.NetworkAPI) ([]string, error) {
 	sgs, err := networkAPI.ListSecurityGroups()
 	if err != nil {
-		return nil, nil // non-fatal: proceed without SGs
+		fmt.Fprintf(os.Stderr, "Warning: could not list security groups: %v\n", err)
+		return nil, nil
 	}
 	if len(sgs) == 0 {
 		return nil, nil
@@ -561,7 +562,17 @@ func selectSecurityGroups(networkAPI *api.NetworkAPI) ([]string, error) {
 		if choice == "" {
 			break
 		}
-		selected = append(selected, choice)
+		// Deduplicate
+		dup := false
+		for _, s := range selected {
+			if s == choice {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			selected = append(selected, choice)
+		}
 		// Ask if user wants to add more
 		items[0] = prompt.SelectItem{Label: "(done)", Value: ""}
 		continue

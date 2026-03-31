@@ -206,7 +206,7 @@ var rebuildCmd = &cobra.Command{
 		imageAPI := api.NewImageAPI(client)
 		img, err := imageAPI.GetImage(args[1])
 		if err != nil {
-			return fmt.Errorf("image %s is not available — rebuild is not possible.\nTo rebuild with a different image, specify one explicitly: --image <image-id>", args[1])
+			return fmt.Errorf("image %s is not available — rebuild is not possible.\nSpecify a valid image ID as the second argument: conoha server rebuild <server> <image-id>", args[1])
 		}
 		ok, err := prompt.Confirm(fmt.Sprintf("Rebuild server with %s? All data will be lost", img.Name))
 		if err != nil {
