@@ -59,6 +59,19 @@ func TestServerIP(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "unknown type fallback",
+			server: &model.Server{
+				Name: "test",
+				ID:   "abc-123",
+				Addresses: map[string][]model.Address{
+					"net1": {
+						{Addr: "10.0.0.1", Version: 4, Type: ""},
+					},
+				},
+			},
+			want: "10.0.0.1",
+		},
+		{
 			name: "multiple networks",
 			server: &model.Server{
 				Name: "test",

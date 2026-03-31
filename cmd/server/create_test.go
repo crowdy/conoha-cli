@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/crowdy/conoha-cli/internal/model"
 )
 
 func newTestCmd(flags map[string]string) *cobra.Command {
@@ -108,6 +110,43 @@ func TestResolveUserData_TooLarge(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "too large") {
 		t.Errorf("expected 'too large' error, got: %v", err)
+	}
+}
+
+func TestMaxBootVolumeGB(t *testing.T) {
+	tests := []struct {
+		name   string
+		ram    int
+		wantGB int
+	}{
+		{"512MB plan", 512, 30},
+		{"1GB plan", 1024, 100},
+		{"2GB plan", 2048, 100},
+		{"4GB plan", 4096, 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &model.Flavor{RAM: tt.ram}
+			if got := maxBootVolumeGB(f); got != tt.wantGB {
+				t.Errorf("maxBootVolumeGB(RAM=%d) = %d, want %d", tt.ram, got, tt.wantGB)
+			}
+		})
+	}
+}
+
+func TestBootVolumeSizes(t *testing.T) {
+	// 512MB plan should only offer 30GB
+	f512 := &model.Flavor{RAM: 512}
+	sizes := bootVolumeSizes(f512)
+	if len(sizes) != 1 || sizes[0].Value != "30" {
+		t.Errorf("512MB plan: expected [30GB], got %v", sizes)
+	}
+
+	// 1GB+ plan should offer 100GB
+	f1g := &model.Flavor{RAM: 1024}
+	sizes = bootVolumeSizes(f1g)
+	if len(sizes) != 1 || sizes[0].Value != "100" {
+		t.Errorf("1GB plan: expected [100GB], got %v", sizes)
 	}
 }
 

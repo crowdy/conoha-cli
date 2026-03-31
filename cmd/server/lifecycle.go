@@ -193,15 +193,22 @@ var rebuildCmd = &cobra.Command{
 	Short: "Rebuild a server with a new image",
 	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		compute, err := getComputeAPI(cmd)
+		client, err := cmdutil.NewClient(cmd)
 		if err != nil {
 			return err
 		}
+		compute := api.NewComputeAPI(client)
 		id, err := resolveServerID(compute, args[0])
 		if err != nil {
 			return err
 		}
-		ok, err := prompt.Confirm("Rebuild server? All data will be lost")
+		// Verify image exists before proceeding
+		imageAPI := api.NewImageAPI(client)
+		img, err := imageAPI.GetImage(args[1])
+		if err != nil {
+			return fmt.Errorf("image %s is not available — rebuild is not possible.\nSpecify a valid image ID as the second argument: conoha server rebuild <server> <image-id>", args[1])
+		}
+		ok, err := prompt.Confirm(fmt.Sprintf("Rebuild server with %s? All data will be lost", img.Name))
 		if err != nil {
 			return err
 		}
@@ -212,7 +219,7 @@ var rebuildCmd = &cobra.Command{
 		if err := compute.RebuildServer(id, args[1]); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Server %s rebuilding with image %s\n", args[0], args[1])
+		fmt.Fprintf(os.Stderr, "Server %s rebuilding with image %s\n", args[0], img.Name)
 		return nil
 	},
 }

@@ -196,6 +196,16 @@ func (a *ComputeAPI) ListKeypairs() ([]model.Keypair, error) {
 	return keypairs, nil
 }
 
+// GetKeypair returns a single keypair by name.
+func (a *ComputeAPI) GetKeypair(name string) (*model.Keypair, error) {
+	url := fmt.Sprintf("%s/os-keypairs/%s", a.baseURL(), name)
+	var resp model.KeypairWrapper
+	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Keypair, nil
+}
+
 // CreateKeypair creates a new keypair.
 func (a *ComputeAPI) CreateKeypair(req *model.KeypairCreateRequest) (*model.Keypair, error) {
 	url := fmt.Sprintf("%s/os-keypairs", a.baseURL())
@@ -249,6 +259,19 @@ func (a *ComputeAPI) GetServerMetadata(id string) (map[string]string, error) {
 		Metadata map[string]string `json:"metadata"`
 	}
 	if err := a.Client.Get(url, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Metadata, nil
+}
+
+// UpdateServerMetadata merges metadata into a server's existing metadata.
+func (a *ComputeAPI) UpdateServerMetadata(id string, meta map[string]string) (map[string]string, error) {
+	url := fmt.Sprintf("%s/servers/%s/metadata", a.baseURL(), id)
+	body := map[string]any{"metadata": meta}
+	var resp struct {
+		Metadata map[string]string `json:"metadata"`
+	}
+	if _, err := a.Client.Post(url, body, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Metadata, nil

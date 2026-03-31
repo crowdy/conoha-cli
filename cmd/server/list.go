@@ -82,8 +82,25 @@ var showCmd = &cobra.Command{
 			return output.New(format).Format(os.Stdout, server)
 		}
 
+		// Resolve flavor name
+		flavorDisplay := server.Flavor.ID
+		if f, err := compute.GetFlavor(server.Flavor.ID); err == nil {
+			flavorDisplay = fmt.Sprintf("%s (%d vCPU, %s RAM)", f.Name, f.VCPUs, formatMB(f.RAM))
+		}
+
+		// Resolve image name
+		imageDisplay := "(not set — booted from volume)"
+		if server.ImageID != "" {
+			imageAPI := api.NewImageAPI(client)
+			if img, err := imageAPI.GetImage(server.ImageID); err == nil {
+				imageDisplay = img.Name
+			} else {
+				imageDisplay = fmt.Sprintf("(deleted or unavailable) %s", server.ImageID)
+			}
+		}
+
 		// Human-readable key-value output
-		printServerDetail(server)
+		printServerDetail(server, flavorDisplay, imageDisplay)
 
 		// Volume attachments (non-fatal)
 		if attachments, err := compute.ListVolumeAttachments(server.ID); err == nil && len(attachments) > 0 {
@@ -98,20 +115,46 @@ var showCmd = &cobra.Command{
 			}
 		}
 
-		// Ports (non-fatal)
+		// Ports and Security Groups (non-fatal)
 		networkAPI := api.NewNetworkAPI(client)
 		if ports, err := networkAPI.ListPortsByDevice(server.ID); err == nil && len(ports) > 0 {
+			// Build SG ID-to-name map
+			sgMap := make(map[string]string)
+			if sgs, err := networkAPI.ListSecurityGroups(); err == nil {
+				for _, sg := range sgs {
+					sgMap[sg.ID] = sg.Name
+				}
+			}
+
 			fmt.Println("Ports:")
 			for _, p := range ports {
 				var ips []string
 				for _, ip := range p.FixedIPs {
 					ips = append(ips, ip.IPAddress)
 				}
-				sgs := ""
-				if len(p.SecurityGroups) > 0 {
-					sgs = " sg=[" + strings.Join(p.SecurityGroups, ",") + "]"
+				fmt.Printf("  %s mac=%s ips=[%s]\n", p.ID, p.MACAddress, strings.Join(ips, ","))
+			}
+
+			// Collect unique SGs across all ports
+			sgSeen := make(map[string]bool)
+			var sgNames []string
+			for _, p := range ports {
+				for _, sgID := range p.SecurityGroups {
+					if !sgSeen[sgID] {
+						sgSeen[sgID] = true
+						name := sgMap[sgID]
+						if name == "" {
+							name = sgID
+						}
+						sgNames = append(sgNames, name)
+					}
 				}
-				fmt.Printf("  %s mac=%s ips=[%s]%s\n", p.ID, p.MACAddress, strings.Join(ips, ","), sgs)
+			}
+			if len(sgNames) > 0 {
+				fmt.Println("Security Groups:")
+				for _, name := range sgNames {
+					fmt.Printf("  %s\n", name)
+				}
 			}
 		}
 
@@ -119,14 +162,14 @@ var showCmd = &cobra.Command{
 	},
 }
 
-func printServerDetail(s *model.Server) {
+func printServerDetail(s *model.Server, flavorDisplay, imageDisplay string) {
 	jst := time.FixedZone("JST", 9*60*60)
 
 	fmt.Printf("ID:        %s\n", s.ID)
 	fmt.Printf("Name:      %s\n", s.Name)
 	fmt.Printf("Status:    %s\n", s.Status)
-	fmt.Printf("Flavor:    %s\n", s.Flavor.ID)
-	fmt.Printf("Image:     %s\n", s.ImageID)
+	fmt.Printf("Flavor:    %s\n", flavorDisplay)
+	fmt.Printf("Image:     %s\n", imageDisplay)
 	fmt.Printf("Key Name:  %s\n", s.KeyName)
 	fmt.Printf("Tenant:    %s\n", s.TenantID)
 	fmt.Printf("Created:   %s (%s JST)\n",
@@ -157,7 +200,7 @@ func printServerDetail(s *model.Server) {
 
 var renameCmd = &cobra.Command{
 	Use:   "rename <id|name> <new-name>",
-	Short: "Rename a server",
+	Short: "Rename a server (updates instance_name_tag)",
 	Args:  cmdutil.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		compute, err := getComputeAPI(cmd)
@@ -168,11 +211,13 @@ var renameCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		renamed, err := compute.RenameServer(server.ID, args[1])
+		_, err = compute.UpdateServerMetadata(server.ID, map[string]string{
+			"instance_name_tag": args[1],
+		})
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Server renamed: %s -> %s\n", args[0], renamed.Name)
+		fmt.Fprintf(os.Stderr, "Server renamed: %s -> %s\n", args[0], args[1])
 		return nil
 	},
 }

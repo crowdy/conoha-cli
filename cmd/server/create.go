@@ -26,10 +26,17 @@ var volumeTypeChoices = []prompt.SelectItem{
 	{Label: "boot-game-gpu (c3j1-ds03-boot)", Value: "c3j1-ds03-boot"},
 }
 
-var volumeSizeChoices = []prompt.SelectItem{
-	{Label: "100GB (boot volume)", Value: "100"},
-	{Label: "200GB (additional volume)", Value: "200"},
-	{Label: "500GB (additional volume)", Value: "500"},
+// bootVolumeSizes returns available boot volume size choices for the given flavor.
+// The 512MB plan (RAM < 1024) only supports 30GB boot volumes.
+func bootVolumeSizes(flavor *model.Flavor) []prompt.SelectItem {
+	if flavor.RAM < 1024 {
+		return []prompt.SelectItem{
+			{Label: "30GB (boot volume)", Value: "30"},
+		}
+	}
+	return []prompt.SelectItem{
+		{Label: "100GB (boot volume)", Value: "100"},
+	}
 }
 
 func init() {
@@ -39,6 +46,7 @@ func init() {
 	createCmd.Flags().String("volume", "", "existing volume ID to use as boot disk")
 	createCmd.Flags().String("key-name", "", "SSH key name")
 	createCmd.Flags().String("admin-pass", "", "admin password")
+	createCmd.Flags().StringArray("security-group", nil, "security group name (repeatable)")
 	createCmd.Flags().String("user-data", "", "startup script file path")
 	createCmd.Flags().String("user-data-raw", "", "startup script string (inline)")
 	createCmd.Flags().String("user-data-url", "", "startup script URL (wrapped as #include)")
@@ -98,6 +106,17 @@ var createCmd = &cobra.Command{
 			}
 		}
 
+		// Resolve security groups
+		sgNames, _ := cmd.Flags().GetStringArray("security-group")
+		if len(sgNames) == 0 {
+			// Interactive: let user select from available security groups
+			networkAPI := api.NewNetworkAPI(client)
+			sgNames, err = selectSecurityGroups(networkAPI)
+			if err != nil {
+				return err
+			}
+		}
+
 		// Warn if Windows flavor with user_data
 		if userData != "" && len(flavor.Name) > 2 && flavor.Name[2] == 'w' {
 			fmt.Fprintln(os.Stderr, "Warning: startup scripts are not supported on Windows flavors")
@@ -117,6 +136,12 @@ var createCmd = &cobra.Command{
 		req.Server.KeyName = keyName
 		req.Server.AdminPass = adminPass
 		req.Server.UserData = userData
+		req.Server.Metadata = map[string]string{
+			"instance_name_tag": name,
+		}
+		for _, sg := range sgNames {
+			req.Server.SecurityGroups = append(req.Server.SecurityGroups, model.SecurityGroupRef{Name: sg})
+		}
 
 		if volumeID != "" {
 			// Boot from volume: imageRef must be empty
@@ -205,7 +230,20 @@ var createCmd = &cobra.Command{
 			}
 		}
 
-		return cmdutil.FormatOutput(cmd, server)
+		type createResult struct {
+			ID     string `json:"id"`
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		}
+		result := createResult{
+			ID:     server.ID,
+			Name:   name,
+			Status: server.Status,
+		}
+		if result.Status == "" {
+			result.Status = "BUILD"
+		}
+		return cmdutil.FormatOutput(cmd, result)
 	},
 }
 
@@ -324,6 +362,14 @@ func selectImage(imageAPI *api.ImageAPI) (string, error) {
 	return prompt.Select("Select image", items)
 }
 
+// maxBootVolumeGB returns the maximum boot volume size in GB for the given flavor.
+func maxBootVolumeGB(flavor *model.Flavor) int {
+	if flavor.RAM < 1024 {
+		return 30
+	}
+	return 100
+}
+
 // flavorNeedsVolume returns true if the flavor requires a boot volume.
 // Flavor naming: g2l-xxx (Linux), g2w-xxx (Windows) need volumes; g2d-xxx (dedicated) does not.
 func flavorNeedsVolume(flavorName string) bool {
@@ -346,6 +392,9 @@ func resolveBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID s
 		if vol.Status != "available" {
 			return "", false, fmt.Errorf("volume %s is not available (status: %s)", flagVolumeID, vol.Status)
 		}
+		if maxGB := maxBootVolumeGB(flavor); vol.Size > maxGB {
+			return "", false, fmt.Errorf("volume size %dGB exceeds maximum %dGB for flavor %s", vol.Size, maxGB, flavor.Name)
+		}
 		return flagVolumeID, false, nil
 	}
 
@@ -360,12 +409,12 @@ func resolveBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID s
 	}
 
 	if choice == "new" {
-		return createBootVolume(volumeAPI, imageID)
+		return createBootVolume(volumeAPI, flavor, imageID)
 	}
 	return selectExistingVolume(volumeAPI)
 }
 
-func createBootVolume(volumeAPI *api.VolumeAPI, imageID string) (string, bool, error) {
+func createBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID string) (string, bool, error) {
 	volName, err := prompt.String("Volume name")
 	if err != nil {
 		return "", false, err
@@ -379,7 +428,8 @@ func createBootVolume(volumeAPI *api.VolumeAPI, imageID string) (string, bool, e
 		return "", false, err
 	}
 
-	sizeStr, err := prompt.Select("Volume size", volumeSizeChoices)
+	sizeChoices := bootVolumeSizes(flavor)
+	sizeStr, err := prompt.Select("Volume size", sizeChoices)
 	if err != nil {
 		return "", false, err
 	}
@@ -479,4 +529,53 @@ func waitForServerStatus(compute *api.ComputeAPI, id, target string, wc *cmdutil
 		}
 		return false, s.Status, nil
 	})
+}
+
+// selectSecurityGroups lets the user interactively pick security groups.
+// Returns selected group names, or nil if user selects "(skip)".
+func selectSecurityGroups(networkAPI *api.NetworkAPI) ([]string, error) {
+	sgs, err := networkAPI.ListSecurityGroups()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not list security groups: %v\n", err)
+		return nil, nil
+	}
+	if len(sgs) == 0 {
+		return nil, nil
+	}
+
+	items := make([]prompt.SelectItem, len(sgs)+1)
+	items[0] = prompt.SelectItem{Label: "(skip)", Value: ""}
+	for i, sg := range sgs {
+		label := sg.Name
+		if label == "" {
+			label = sg.ID[:8]
+		}
+		items[i+1] = prompt.SelectItem{Label: label, Value: sg.Name}
+	}
+
+	var selected []string
+	for {
+		choice, err := prompt.Select("Select security group (or skip)", items)
+		if err != nil {
+			return nil, err
+		}
+		if choice == "" {
+			break
+		}
+		// Deduplicate
+		dup := false
+		for _, s := range selected {
+			if s == choice {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			selected = append(selected, choice)
+		}
+		// Ask if user wants to add more
+		items[0] = prompt.SelectItem{Label: "(done)", Value: ""}
+		continue
+	}
+	return selected, nil
 }
