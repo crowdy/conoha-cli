@@ -18,10 +18,14 @@ func (f *TableFormatter) Format(w io.Writer, data any) error {
 		val = val.Elem()
 	}
 
-	// If not a slice, just print the value
+	// If not a slice, wrap single struct as one-row table
 	if val.Kind() != reflect.Slice {
-		_, err := fmt.Fprintf(w, "%v\n", data)
-		return err
+		if val.Kind() == reflect.Struct {
+			val = reflect.Append(reflect.MakeSlice(reflect.SliceOf(val.Type()), 0, 1), val)
+		} else {
+			_, err := fmt.Fprintf(w, "%v\n", data)
+			return err
+		}
 	}
 
 	if val.Len() == 0 {

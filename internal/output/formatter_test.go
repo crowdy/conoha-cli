@@ -161,6 +161,45 @@ func TestNewWithOptions(t *testing.T) {
 	}
 }
 
+func TestTableFormatterSingleStruct(t *testing.T) {
+	var buf bytes.Buffer
+	f := &TableFormatter{}
+	data := testItem{Name: "server1", Value: 100}
+
+	if err := f.Format(&buf, data); err != nil {
+		t.Fatalf("Format() error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "NAME") {
+		t.Errorf("expected header NAME, got: %s", out)
+	}
+	if !strings.Contains(out, "server1") {
+		t.Errorf("expected 'server1' in output, got: %s", out)
+	}
+	if !strings.Contains(out, "100") {
+		t.Errorf("expected '100' in output, got: %s", out)
+	}
+}
+
+func TestTableFormatterSingleStructPointer(t *testing.T) {
+	var buf bytes.Buffer
+	f := &TableFormatter{}
+	data := &testItem{Name: "server2", Value: 200}
+
+	if err := f.Format(&buf, data); err != nil {
+		t.Fatalf("Format() error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "NAME") {
+		t.Errorf("expected header NAME, got: %s", out)
+	}
+	if !strings.Contains(out, "server2") {
+		t.Errorf("expected 'server2' in output, got: %s", out)
+	}
+}
+
 func TestNew(t *testing.T) {
 	tests := []struct {
 		format string
