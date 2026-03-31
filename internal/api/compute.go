@@ -40,9 +40,9 @@ func (a *ComputeAPI) GetServer(id string) (*model.Server, error) {
 	return &resp.Server, nil
 }
 
-// FindServer finds a server by ID or name.
+// FindServer finds a server by ID, name, or nametag.
 // If idOrName looks like a UUID, it tries GetServer first.
-// Otherwise, it lists all servers and matches by name.
+// Otherwise, it lists all servers and matches by name, then by nametag.
 func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 	// Try as ID first (UUID-like)
 	if len(idOrName) == 36 && idOrName[8] == '-' {
@@ -52,7 +52,7 @@ func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 		}
 	}
 
-	// Search by name
+	// Search by name, then by nametag
 	servers, err := a.ListServers()
 	if err != nil {
 		return nil, err
@@ -61,6 +61,20 @@ func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 		if servers[i].Name == idOrName {
 			return &servers[i], nil
 		}
+	}
+
+	// Search by nametag (instance_name_tag metadata)
+	var matched []*model.Server
+	for i := range servers {
+		if servers[i].Metadata["instance_name_tag"] == idOrName {
+			matched = append(matched, &servers[i])
+		}
+	}
+	if len(matched) == 1 {
+		return matched[0], nil
+	}
+	if len(matched) > 1 {
+		return nil, fmt.Errorf("multiple servers found with nametag %q, use UUID instead", idOrName)
 	}
 
 	// Fall back to ID lookup (in case it's a short/non-UUID ID)
