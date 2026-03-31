@@ -46,8 +46,11 @@ var sshCmd = &cobra.Command{
 			identity = internalssh.ResolveKeyPath(s.KeyName)
 		}
 
+		fmt.Fprintf(os.Stderr, "Connecting to %s@%s...\n", user, ip)
+
 		sshArgs := []string{"ssh"}
 		sshArgs = append(sshArgs, "-l", user)
+		sshArgs = append(sshArgs, "-o", "ConnectTimeout=10")
 		if port != "22" {
 			sshArgs = append(sshArgs, "-p", port)
 		}

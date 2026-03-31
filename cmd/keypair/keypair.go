@@ -34,11 +34,13 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(showCmd)
 	Cmd.AddCommand(createCmd)
 	Cmd.AddCommand(deleteCmd)
 
 	createCmd.Flags().String("public-key", "", "public key content")
 	createCmd.Flags().StringP("output", "o", "", "save private key to file (default: ~/.ssh/conoha_<name>)")
+	showCmd.Flags().StringP("output", "o", "", "save public key to file instead of stdout")
 }
 
 var listCmd = &cobra.Command{
@@ -64,6 +66,47 @@ var listCmd = &cobra.Command{
 			rows[i] = row{Name: k.Name, Fingerprint: k.Fingerprint}
 		}
 		return cmdutil.FormatOutput(cmd, rows)
+	},
+}
+
+var showCmd = &cobra.Command{
+	Use:   "show <name>",
+	Short: "Show keypair details and public key",
+	Args:  cmdutil.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := cmdutil.NewClient(cmd)
+		if err != nil {
+			return err
+		}
+		compute := api.NewComputeAPI(client)
+		kp, err := compute.GetKeypair(args[0])
+		if err != nil {
+			return err
+		}
+
+		output, _ := cmd.Flags().GetString("output")
+		if output != "" {
+			dir := filepath.Dir(output)
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				return fmt.Errorf("creating directory %s: %w", dir, err)
+			}
+			if err := os.WriteFile(output, []byte(kp.PublicKey), 0644); err != nil {
+				return fmt.Errorf("saving public key: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "Public key saved to %s\n", output)
+			return nil
+		}
+
+		type keypairDetail struct {
+			Name        string `json:"name"`
+			Fingerprint string `json:"fingerprint"`
+			PublicKey   string `json:"public_key"`
+		}
+		return cmdutil.FormatOutput(cmd, keypairDetail{
+			Name:        kp.Name,
+			Fingerprint: kp.Fingerprint,
+			PublicKey:   kp.PublicKey,
+		})
 	},
 }
 

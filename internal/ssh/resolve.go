@@ -9,9 +9,9 @@ import (
 )
 
 // ServerIP extracts the best IPv4 address from server addresses.
-// Prefers floating IPv4 over fixed IPv4.
+// Prefers floating IPv4 over fixed IPv4, falls back to any IPv4.
 func ServerIP(s *model.Server) (string, error) {
-	var fixedIP, floatingIP string
+	var fixedIP, floatingIP, anyIP string
 
 	for _, addrs := range s.Addresses {
 		for _, a := range addrs {
@@ -25,6 +25,10 @@ func ServerIP(s *model.Server) (string, error) {
 				if fixedIP == "" {
 					fixedIP = a.Addr
 				}
+			default:
+				if anyIP == "" {
+					anyIP = a.Addr
+				}
 			}
 		}
 	}
@@ -35,7 +39,10 @@ func ServerIP(s *model.Server) (string, error) {
 	if fixedIP != "" {
 		return fixedIP, nil
 	}
-	return "", fmt.Errorf("no IPv4 address found for server %s", s.Name)
+	if anyIP != "" {
+		return anyIP, nil
+	}
+	return "", fmt.Errorf("no IPv4 address found for server %s (%s)", s.Name, s.ID)
 }
 
 // ResolveKeyPath returns the SSH private key path for a server's key name.
