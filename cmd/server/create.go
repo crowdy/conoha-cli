@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,13 +19,8 @@ const (
 	userDataMaxSize = 16 * 1024 // 16 KiB
 )
 
-// volumeTypeChoices maps user-friendly names to API volume type values.
-var volumeTypeChoices = []prompt.SelectItem{
-	{Label: "boot-vps-default (c3j1-ds02-boot)", Value: "c3j1-ds02-boot"},
-	{Label: "boot-vps-gpu (c3j1-ds03-boot)", Value: "c3j1-ds03-boot"},
-	{Label: "boot-game-default (c3j1-ds01-boot)", Value: "c3j1-ds01-boot"},
-	{Label: "boot-game-gpu (c3j1-ds03-boot)", Value: "c3j1-ds03-boot"},
-}
+// defaultBootVolumeType is the only valid volume type for standard VPS server creation.
+const defaultBootVolumeType = "c3j1-ds02-boot"
 
 // bootVolumeSizes returns available boot volume size choices for the given flavor.
 // The 512MB plan (RAM < 1024) only supports 30GB boot volumes.
@@ -84,6 +80,9 @@ var createCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("flavor %q not found: %w", flavorID, err)
 			}
+			if !isUsableFlavor(flavor.Name) {
+				fmt.Fprintf(os.Stderr, "Warning: flavor %q may not be supported via public API\n", flavor.Name)
+			}
 		} else {
 			flavor, err = selectFlavor(compute)
 			if err != nil {
@@ -97,6 +96,19 @@ var createCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+		}
+
+		// Fetch image details (used for pre-flight validation and summary display)
+		imageAPI := api.NewImageAPI(client)
+		img, err := imageAPI.GetImage(imageID)
+		if err != nil {
+			return fmt.Errorf("fetching image details: %w", err)
+		}
+
+		// Pre-flight: validate image memory requirements (#32)
+		if img.MinRAM > 0 && flavor.RAM < img.MinRAM {
+			return fmt.Errorf("selected flavor %q has %s RAM, but image %q requires at least %s. Please choose a larger flavor",
+				flavor.Name, formatMB(flavor.RAM), img.Name, formatMB(img.MinRAM))
 		}
 
 		if keyName == "" {
@@ -159,12 +171,8 @@ var createCmd = &cobra.Command{
 			req.Server.ImageRef = imageID
 		}
 
-		// Resolve names for summary
-		imageAPI := api.NewImageAPI(client)
-		imageName := imageID
-		if img, err := imageAPI.GetImage(imageID); err == nil {
-			imageName = img.Name
-		}
+		// Use image name from earlier fetch
+		imageName := img.Name
 
 		// Print summary
 		fmt.Fprintln(os.Stderr, "=== Server Create Summary ===")
@@ -292,25 +300,41 @@ func resolveUserData(cmd *cobra.Command) (string, error) {
 	return base64.StdEncoding.EncodeToString(content), nil
 }
 
+// isUsableFlavor returns true if the flavor can be used via the public API.
+// Only Linux (g2l) hourly (-t-) flavors are supported.
+func isUsableFlavor(name string) bool {
+	return strings.HasPrefix(name, "g2l-t-")
+}
+
 func selectFlavor(compute *api.ComputeAPI) (*model.Flavor, error) {
 	flavors, err := compute.ListFlavors()
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(flavors, func(i, j int) bool {
-		if flavors[i].VCPUs != flavors[j].VCPUs {
-			return flavors[i].VCPUs < flavors[j].VCPUs
+	// Filter to only usable flavors (#34)
+	var usable []model.Flavor
+	for _, f := range flavors {
+		if isUsableFlavor(f.Name) {
+			usable = append(usable, f)
 		}
-		return flavors[i].RAM < flavors[j].RAM
+	}
+	if len(usable) == 0 {
+		return nil, fmt.Errorf("no usable flavors found (only Linux hourly flavors are supported via API)")
+	}
+	sort.Slice(usable, func(i, j int) bool {
+		if usable[i].VCPUs != usable[j].VCPUs {
+			return usable[i].VCPUs < usable[j].VCPUs
+		}
+		return usable[i].RAM < usable[j].RAM
 	})
-	items := make([]prompt.SelectItem, len(flavors))
-	flavorMap := make(map[string]*model.Flavor, len(flavors))
-	for i, f := range flavors {
+	items := make([]prompt.SelectItem, len(usable))
+	flavorMap := make(map[string]*model.Flavor, len(usable))
+	for i, f := range usable {
 		items[i] = prompt.SelectItem{
 			Label: fmt.Sprintf("%s (%d vCPU, %s RAM)", f.Name, f.VCPUs, formatMB(f.RAM)),
 			Value: f.ID,
 		}
-		flavorMap[f.ID] = &flavors[i]
+		flavorMap[f.ID] = &usable[i]
 	}
 	id, err := prompt.Select("Select flavor", items)
 	if err != nil {
@@ -438,10 +462,7 @@ func createBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID st
 		return "", false, fmt.Errorf("invalid volume size: %w", err)
 	}
 
-	volType, err := prompt.Select("Volume type", volumeTypeChoices)
-	if err != nil {
-		return "", false, err
-	}
+	volType := defaultBootVolumeType
 
 	fmt.Fprintf(os.Stderr, "Creating boot volume %q (%dGB, %s)...\n", volName, sizeGB, volType)
 	req := &model.VolumeCreateRequest{}

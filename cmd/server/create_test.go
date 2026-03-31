@@ -150,6 +150,28 @@ func TestBootVolumeSizes(t *testing.T) {
 	}
 }
 
+func TestIsUsableFlavor(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"g2l-t-c1m512", true},
+		{"g2l-t-c2m1", true},
+		{"g2l-t-c4m4", true},
+		{"g2l-p-c1m512", false}, // prepaid
+		{"g2w-t-c2m1", false},   // Windows
+		{"g2d-t-c2m1", false},   // dedicated
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isUsableFlavor(tt.name); got != tt.want {
+				t.Errorf("isUsableFlavor(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveUserData_MutualExclusion(t *testing.T) {
 	cmd := newTestCmd(map[string]string{
 		"user-data-raw": "echo hi",
