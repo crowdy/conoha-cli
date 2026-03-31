@@ -33,6 +33,8 @@ func init() {
 	Cmd.AddCommand(detachVolumeCmd)
 	Cmd.AddCommand(sshCmd)
 	Cmd.AddCommand(deployCmd)
+	Cmd.AddCommand(addSecurityGroupCmd)
+	Cmd.AddCommand(removeSecurityGroupCmd)
 }
 
 func getComputeAPI(cmd *cobra.Command) (*api.ComputeAPI, error) {
