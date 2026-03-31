@@ -66,7 +66,7 @@ func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 	// Search by nametag (instance_name_tag metadata)
 	var matched []*model.Server
 	for i := range servers {
-		if servers[i].Metadata["instance_name_tag"] == idOrName {
+		if tag, ok := servers[i].Metadata["instance_name_tag"]; ok && tag == idOrName {
 			matched = append(matched, &servers[i])
 		}
 	}
