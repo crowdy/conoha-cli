@@ -24,6 +24,7 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(installCmd)
+	Cmd.AddCommand(updateCmd)
 }
 
 func defaultSkillBase() string {
@@ -50,6 +51,36 @@ func runInstall(baseDir string) error {
 
 	fmt.Fprintln(os.Stderr, "Installed conoha-cli-skill successfully.")
 	return nil
+}
+
+func runUpdate(baseDir string) error {
+	skillDir := filepath.Join(baseDir, skillName)
+	if _, err := os.Stat(skillDir); os.IsNotExist(err) {
+		return &cerrors.ValidationError{Message: "not installed, use 'conoha skill install'"}
+	}
+
+	gitDir := filepath.Join(skillDir, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return &cerrors.ValidationError{Message: "not a git repository, remove and reinstall"}
+	}
+
+	cmd := exec.Command("git", "-C", skillDir, "pull")
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return &cerrors.NetworkError{Err: fmt.Errorf("git pull failed: %w", err)}
+	}
+
+	fmt.Fprintln(os.Stderr, "Updated conoha-cli-skill successfully.")
+	return nil
+}
+
+var updateCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Update conoha-cli-skill to latest version",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runUpdate(defaultSkillBase())
+	},
 }
 
 var installCmd = &cobra.Command{

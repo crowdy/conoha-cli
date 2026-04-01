@@ -56,3 +56,50 @@ func TestInstallCmd(t *testing.T) {
 		}
 	})
 }
+
+func TestUpdateCmd(t *testing.T) {
+	t.Run("fails when not installed", func(t *testing.T) {
+		dir := t.TempDir()
+
+		err := runUpdate(dir)
+		if err == nil {
+			t.Fatal("expected error when not installed")
+		}
+		if err.Error() != "validation error: not installed, use 'conoha skill install'" {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fails when not a git repo", func(t *testing.T) {
+		dir := t.TempDir()
+		skillDir := filepath.Join(dir, skillName)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		err := runUpdate(dir)
+		if err == nil {
+			t.Fatal("expected error when not a git repo")
+		}
+		if err.Error() != "validation error: not a git repository, remove and reinstall" {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("pulls successfully", func(t *testing.T) {
+		if _, err := exec.LookPath("git"); err != nil {
+			t.Skip("git not available")
+		}
+		dir := t.TempDir()
+
+		// Install first
+		if err := runInstall(dir); err != nil {
+			t.Skipf("install failed (remote repo may not exist): %v", err)
+		}
+
+		err := runUpdate(dir)
+		if err != nil {
+			t.Fatalf("update failed: %v", err)
+		}
+	})
+}
