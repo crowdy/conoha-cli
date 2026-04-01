@@ -20,23 +20,37 @@ Claude Code skill for ConoHa VPS3 CLI infrastructure orchestration. Provides rec
 ```
 crowdy/conoha-cli-skill/
 ├── SKILL.md                          # Main entry point for Claude Code
-├── recipes/
-│   ├── single-server-app.md          # Docker Compose app deployment
-│   ├── single-server-script.md       # Custom script deployment
-│   ├── k8s-cluster.md                # Kubernetes cluster (k3s)
-│   ├── openstack-platform.md         # OpenStack platform (DevStack)
-│   └── slurm-cluster.md              # Slurm HPC cluster
-└── README.md                         # GitHub landing page (install instructions)
+└── recipes/
+    ├── single-server-app.md          # Docker Compose app deployment
+    ├── single-server-script.md       # Custom script deployment
+    ├── k8s-cluster.md                # Kubernetes cluster (k3s)
+    ├── openstack-platform.md         # OpenStack platform (DevStack)
+    └── slurm-cluster.md              # Slurm HPC cluster
 ```
+
+No README.md or auxiliary docs — skill contains only what Claude Code needs.
 
 ## SKILL.md Structure
 
-Main file that Claude Code loads. Contains:
+YAML frontmatter (required for Claude Code skill triggering):
 
-1. **Prerequisites** — conoha-cli installed, auth configured, keypair registered
-2. **Basic Usage** — core command summary (server, flavor, image, keypair, app)
-3. **Recipes Index** — table mapping user intent to recipe files
-4. **Common Patterns** — shared patterns across recipes:
+```yaml
+---
+name: conoha-cli
+description: >
+  ConoHa VPS3 CLIによるインフラ構築スキル。サーバー作成、アプリデプロイ、
+  Kubernetesクラスター、OpenStackプラットフォーム、Slurmクラスターの構築を支援。
+  「ConoHaでサーバーを作って」「k8sクラスターを構築して」「アプリをデプロイして」
+  などのリクエストでトリガー。
+---
+```
+
+Body contents (under 500 lines, Japanese, imperative form):
+
+1. **前提条件** — conoha-cli installed, auth configured, keypair registered
+2. **基本操作** — core command summary (server, flavor, image, keypair, app)
+3. **レシピ一覧** — table mapping user intent to recipe files
+4. **共通パターン** — shared patterns across recipes:
    - Multi-server creation with naming conventions
    - Private network configuration
    - Security group setup
@@ -110,7 +124,7 @@ Each recipe provides:
 1. **Concrete default path** — specific conoha commands with real parameters, ready to execute
 2. **Variation guide** — concise notes on how to customize (node count, OS, tools)
 
-Claude Code reads SKILL.md first, selects the appropriate recipe based on user request, reads the recipe file, then executes or adapts as needed.
+Progressive disclosure: Claude Code loads SKILL.md (~500 lines), then reads only the relevant recipe file on demand.
 
 ## Claude Code Integration Flow
 
@@ -120,3 +134,12 @@ Claude Code reads SKILL.md first, selects the appropriate recipe based on user r
 4. Executes steps sequentially, capturing outputs (server IDs, IPs) for subsequent steps
 5. Applies customizations if user specifies variations
 6. Runs verification commands to confirm success
+
+## Skill Design Guidelines (from skill-creator)
+
+- **Concise**: Only include knowledge Claude doesn't already have
+- **Progressive disclosure**: SKILL.md as index, recipes as references loaded on demand
+- **No auxiliary files**: No README.md, CHANGELOG.md, etc.
+- **Frontmatter**: `name` + `description` fields for skill triggering
+- **Imperative form**: All instructions written in imperative/infinitive form
+- **Under 500 lines**: SKILL.md body stays lean, detail goes to recipe files
