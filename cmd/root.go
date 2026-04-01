@@ -17,6 +17,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/lb"
 	"github.com/crowdy/conoha-cli/cmd/network"
 	"github.com/crowdy/conoha-cli/cmd/server"
+	"github.com/crowdy/conoha-cli/cmd/skill"
 	"github.com/crowdy/conoha-cli/cmd/storage"
 	"github.com/crowdy/conoha-cli/cmd/volume"
 	"github.com/crowdy/conoha-cli/internal/api"
@@ -87,6 +88,7 @@ func init() {
 	rootCmd.AddCommand(storage.Cmd)
 	rootCmd.AddCommand(identity.Cmd)
 	rootCmd.AddCommand(app.Cmd)
+	rootCmd.AddCommand(skill.Cmd)
 }
 
 // Execute runs the root command.
