@@ -57,6 +57,38 @@ func TestInstallCmd(t *testing.T) {
 	})
 }
 
+func TestRemoveCmd(t *testing.T) {
+	t.Run("fails when not installed", func(t *testing.T) {
+		dir := t.TempDir()
+
+		err := runRemove(dir)
+		if err == nil {
+			t.Fatal("expected error when not installed")
+		}
+		if err.Error() != "validation error: not installed" {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("removes successfully with --yes", func(t *testing.T) {
+		dir := t.TempDir()
+		skillDir := filepath.Join(dir, skillName)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("CONOHA_YES", "1")
+
+		err := runRemove(dir)
+		if err != nil {
+			t.Fatalf("remove failed: %v", err)
+		}
+
+		if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+			t.Error("expected skill directory to be removed")
+		}
+	})
+}
+
 func TestUpdateCmd(t *testing.T) {
 	t.Run("fails when not installed", func(t *testing.T) {
 		dir := t.TempDir()

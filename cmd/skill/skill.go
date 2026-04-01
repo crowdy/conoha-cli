@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	cerrors "github.com/crowdy/conoha-cli/internal/errors"
+	"github.com/crowdy/conoha-cli/internal/prompt"
 )
 
 const (
@@ -25,6 +26,7 @@ var Cmd = &cobra.Command{
 func init() {
 	Cmd.AddCommand(installCmd)
 	Cmd.AddCommand(updateCmd)
+	Cmd.AddCommand(removeCmd)
 }
 
 func defaultSkillBase() string {
@@ -80,6 +82,37 @@ var updateCmd = &cobra.Command{
 	Short: "Update conoha-cli-skill to latest version",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runUpdate(defaultSkillBase())
+	},
+}
+
+func runRemove(baseDir string) error {
+	skillDir := filepath.Join(baseDir, skillName)
+	if _, err := os.Stat(skillDir); os.IsNotExist(err) {
+		return &cerrors.ValidationError{Message: "not installed"}
+	}
+
+	ok, err := prompt.Confirm("Remove conoha-cli-skill?")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Fprintln(os.Stderr, "Cancelled.")
+		return nil
+	}
+
+	if err := os.RemoveAll(skillDir); err != nil {
+		return fmt.Errorf("failed to remove: %w", err)
+	}
+
+	fmt.Fprintln(os.Stderr, "Removed conoha-cli-skill successfully.")
+	return nil
+}
+
+var removeCmd = &cobra.Command{
+	Use:   "remove",
+	Short: "Remove conoha-cli-skill",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runRemove(defaultSkillBase())
 	},
 }
 
