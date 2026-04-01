@@ -29,9 +29,12 @@ func init() {
 	Cmd.AddCommand(removeCmd)
 }
 
-func defaultSkillBase() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".claude", "skills")
+func defaultSkillBase() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".claude", "skills"), nil
 }
 
 func runInstall(baseDir string) error {
@@ -81,7 +84,11 @@ var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update conoha-cli-skill to latest version",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runUpdate(defaultSkillBase())
+		base, err := defaultSkillBase()
+		if err != nil {
+			return err
+		}
+		return runUpdate(base)
 	},
 }
 
@@ -112,7 +119,11 @@ var removeCmd = &cobra.Command{
 	Use:   "remove",
 	Short: "Remove conoha-cli-skill",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runRemove(defaultSkillBase())
+		base, err := defaultSkillBase()
+		if err != nil {
+			return err
+		}
+		return runRemove(base)
 	},
 }
 
@@ -120,6 +131,10 @@ var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install conoha-cli-skill for Claude Code",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runInstall(defaultSkillBase())
+		base, err := defaultSkillBase()
+		if err != nil {
+			return err
+		}
+		return runInstall(base)
 	},
 }
