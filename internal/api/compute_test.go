@@ -189,6 +189,37 @@ func TestFindServer(t *testing.T) {
 		}
 	})
 
+	t.Run("duplicate name returns error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"servers": []map[string]any{
+					{
+						"id":     "srv-dup-1",
+						"name":   "dup-name",
+						"status": "ACTIVE",
+					},
+					{
+						"id":     "srv-dup-2",
+						"name":   "dup-name",
+						"status": "ACTIVE",
+					},
+				},
+			})
+		}))
+		defer ts.Close()
+		t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+		api := NewComputeAPI(newTestClient(ts))
+		_, err := api.FindServer("dup-name")
+		if err == nil {
+			t.Fatal("expected error for duplicate name, got nil")
+		}
+		if !strings.Contains(err.Error(), "multiple servers found with name") {
+			t.Errorf("expected 'multiple servers found with name' in error, got: %v", err)
+		}
+	})
+
 	t.Run("duplicate nametag returns error", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")

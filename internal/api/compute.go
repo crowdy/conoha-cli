@@ -57,23 +57,30 @@ func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	var nameMatched []*model.Server
 	for i := range servers {
 		if servers[i].Name == idOrName {
-			return &servers[i], nil
+			nameMatched = append(nameMatched, &servers[i])
 		}
+	}
+	if len(nameMatched) == 1 {
+		return nameMatched[0], nil
+	}
+	if len(nameMatched) > 1 {
+		return nil, fmt.Errorf("multiple servers found with name %q, use UUID instead", idOrName)
 	}
 
 	// Search by nametag (instance_name_tag metadata)
-	var matched []*model.Server
+	var tagMatched []*model.Server
 	for i := range servers {
 		if tag, ok := servers[i].Metadata["instance_name_tag"]; ok && tag == idOrName {
-			matched = append(matched, &servers[i])
+			tagMatched = append(tagMatched, &servers[i])
 		}
 	}
-	if len(matched) == 1 {
-		return matched[0], nil
+	if len(tagMatched) == 1 {
+		return tagMatched[0], nil
 	}
-	if len(matched) > 1 {
+	if len(tagMatched) > 1 {
 		return nil, fmt.Errorf("multiple servers found with nametag %q, use UUID instead", idOrName)
 	}
 
