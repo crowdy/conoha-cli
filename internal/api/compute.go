@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/crowdy/conoha-cli/internal/model"
 )
@@ -67,7 +68,11 @@ func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 		return nameMatched[0], nil
 	}
 	if len(nameMatched) > 1 {
-		return nil, fmt.Errorf("multiple servers found with name %q, use UUID instead", idOrName)
+		ids := make([]string, len(nameMatched))
+		for i, s := range nameMatched {
+			ids[i] = s.ID
+		}
+		return nil, fmt.Errorf("multiple servers found with name %q (%s), use UUID instead", idOrName, strings.Join(ids, ", "))
 	}
 
 	// Search by nametag (instance_name_tag metadata)
@@ -81,7 +86,11 @@ func (a *ComputeAPI) FindServer(idOrName string) (*model.Server, error) {
 		return tagMatched[0], nil
 	}
 	if len(tagMatched) > 1 {
-		return nil, fmt.Errorf("multiple servers found with nametag %q, use UUID instead", idOrName)
+		ids := make([]string, len(tagMatched))
+		for i, s := range tagMatched {
+			ids[i] = s.ID
+		}
+		return nil, fmt.Errorf("multiple servers found with nametag %q (%s), use UUID instead", idOrName, strings.Join(ids, ", "))
 	}
 
 	// Fall back to ID lookup (in case it's a short/non-UUID ID)
