@@ -218,6 +218,9 @@ func TestFindServer(t *testing.T) {
 		if !strings.Contains(err.Error(), "multiple servers found with name") {
 			t.Errorf("expected 'multiple servers found with name' in error, got: %v", err)
 		}
+		if !strings.Contains(err.Error(), "srv-dup-1") || !strings.Contains(err.Error(), "srv-dup-2") {
+			t.Errorf("expected server IDs in error, got: %v", err)
+		}
 	})
 
 	t.Run("duplicate nametag returns error", func(t *testing.T) {
@@ -254,6 +257,9 @@ func TestFindServer(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "multiple servers") {
 			t.Errorf("expected 'multiple servers' in error, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "srv-dup-1") || !strings.Contains(err.Error(), "srv-dup-2") {
+			t.Errorf("expected server IDs in error, got: %v", err)
 		}
 	})
 }
