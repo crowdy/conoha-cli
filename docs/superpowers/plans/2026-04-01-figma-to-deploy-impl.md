@@ -1,0 +1,329 @@
+# Figma-to-Deploy Recipe Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a Figma-to-deploy recipe to conoha-cli-skill that guides Claude Code through fetching Figma designs, generating React (Vite) code, and deploying to ConoHa VPS.
+
+**Architecture:** New recipe file `recipes/figma-to-deploy.md` in the conoha-cli-skill repository, plus a SKILL.md update to register the recipe in the index table. Follows the existing recipe template structure (概要 → 基本構成 → 手順 → カスタマイズ → トラブルシューティング).
+
+**Tech Stack:** Markdown (recipe content), React (Vite), Nginx, Docker Compose (recipe subject matter)
+
+**Target repo:** `crowdy/conoha-cli-skill` (separate from conoha-cli)
+
+---
+
+## File Structure
+
+```
+crowdy/conoha-cli-skill/
+├── SKILL.md                          # Modify: add recipe to レシピ一覧 table + trigger phrases
+└── recipes/
+    └── figma-to-deploy.md            # Create: new recipe file
+```
+
+---
+
+### Task 1: Clone conoha-cli-skill repository
+
+**Files:**
+- Clone: `crowdy/conoha-cli-skill` to working directory
+
+- [ ] **Step 1: Clone the repo**
+
+```bash
+cd /tmp
+git clone git@github.com:crowdy/conoha-cli-skill.git
+cd conoha-cli-skill
+```
+
+- [ ] **Step 2: Verify current structure**
+
+```bash
+ls -la recipes/
+cat SKILL.md
+```
+
+Expected: 5 recipe files (single-server-app.md, single-server-script.md, k8s-cluster.md, openstack-platform.md, slurm-cluster.md) and SKILL.md with レシピ一覧 table.
+
+---
+
+### Task 2: Create figma-to-deploy.md recipe
+
+**Files:**
+- Create: `recipes/figma-to-deploy.md`
+
+- [ ] **Step 1: Create the recipe file**
+
+Write `recipes/figma-to-deploy.md` with the following content:
+
+```markdown
+# FigmaデザインからWebアプリデプロイ
+
+## 概要
+
+Figma MCPサーバーでデザインを取得し、React（Vite）フロントエンドコードを生成、Docker ComposeでパッケージしてConoHa VPSにデプロイするワークフロー。デザイナーがFigmaで作成したデザインを、開発者がClaude Codeで迅速にWebアプリとしてデプロイする場合に使用する。
+
+## 基本構成
+
+- **ソース**: Figma MCPサーバー
+- **フロントエンド**: React（Vite）+ Nginx（静的ファイル配信）
+- **ノード数**: 1
+- **OS**: Ubuntu
+- **コンテナ構成**: マルチステージビルド（npm build → Nginx）
+
+```
+[Figma] -- MCP --> [Claude Code] -- コード生成 --> [ローカルPC]
+                                                      ├── src/
+                                                      ├── Dockerfile
+                                                      └── docker-compose.yml
+                                                           |
+                                                      tar+SSH
+                                                           |
+                                                      [ConoHa VPS]
+                                                      └── /opt/conoha/<app-name>/
+```
+
+## 前提条件
+
+- Figmaアカウントとパーソナルアクセストークンがあること
+- Figma MCPサーバーがClaude Codeに設定済みであること（`~/.claude/settings.json`）
+- `conoha-cli` がインストール済み・認証済みであること
+- SSHキーペアが登録済みであること
+
+> **注意**: Figma MCPサーバーは外部ツールであり、動作の安定性はMCPサーバーの実装に依存する。事前に接続テストを行うことを推奨する。
+
+## 手順
+
+### 1. 事前準備
+
+Figma MCPサーバーの接続を確認する。Claude CodeでFigma MCPのツール一覧が取得できることを確認する。
+
+ConoHaの認証とキーペアを確認する：
+
+```bash
+conoha auth login
+conoha keypair list
+```
+
+対象のFigmaファイルURLとフレーム名を確認する。FigmaファイルURLの形式は `https://www.figma.com/design/<file-key>/<file-name>` である。
+
+### 2. Figmaデザイン取得
+
+Figma MCPを使用してファイル構造を取得する：
+
+- ファイル内のページ・フレーム一覧を取得する
+- 対象フレーム（トップレベルのページデザイン）を特定する
+- デザイントークンを抽出する：カラーパレット、フォント、スペーシング、レイアウト構造
+
+### 3. コード生成
+
+React（Vite）プロジェクトを生成する：
+
+```bash
+npm create vite@latest my-app -- --template react
+cd my-app
+npm install
+```
+
+Figmaデザインから以下を生成する：
+
+- Reactコンポーネント（Figmaのフレーム構造に対応）
+- CSSスタイル（デザイントークンをCSS変数として定義）
+- レスポンシブレイアウト対応
+- `index.html` のメタタグ設定
+
+### 4. Docker Compose構成
+
+`Dockerfile`（マルチステージビルド）を作成する：
+
+```dockerfile
+FROM node:lts-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+```
+
+`nginx.conf` を作成する（SPAルーティング対応）：
+
+```nginx
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+`docker-compose.yml` を作成する：
+
+```yaml
+services:
+  web:
+    build: .
+    ports:
+      - "80:80"
+    restart: unless-stopped
+```
+
+### 5. ConoHaデプロイ
+
+サーバーを作成する（既存サーバーがある場合はスキップ）：
+
+```bash
+conoha server create --name my-figma-app --flavor <フレーバーID> --image <UbuntuイメージID> --key-name <キー名> --wait
+```
+
+Docker環境を初期化してデプロイする：
+
+```bash
+conoha app init my-figma-app --app-name my-app
+conoha app deploy my-figma-app --app-name my-app
+```
+
+### 6. 動作確認
+
+コンテナの状態を確認する：
+
+```bash
+conoha app status my-figma-app --app-name my-app
+```
+
+ブラウザでサーバーIPにアクセスし、以下を確認する：
+
+- ページが正常に表示されること
+- Figmaデザインとの目視比較で大きな差異がないこと
+- レスポンシブ表示が正しく機能すること
+
+## カスタマイズ
+
+### フレームワーク変更
+
+React以外のフレームワークを使用する場合：
+
+| フレームワーク | コマンド |
+|---------------|---------|
+| Next.js | `npx create-next-app@latest my-app` |
+| Vue (Vite) | `npm create vite@latest my-app -- --template vue` |
+| Nuxt | `npx nuxi@latest init my-app` |
+
+Next.jsの場合はDockerfileを変更し、`npm run build && npm start` でNode.jsサーバーを起動する構成にする。
+
+### SSL/TLS対応
+
+Let's EncryptでSSL証明書を取得する場合、docker-compose.ymlにcertbotサービスを追加する。
+
+### カスタムドメイン
+
+ConoHa DNSでドメインを設定する：
+
+```bash
+conoha dns zone create --name example.com
+conoha dns record create --zone-id <ゾーンID> --name www --type A --data <サーバーIP>
+```
+
+## トラブルシューティング
+
+| 問題 | 対処 |
+|------|------|
+| Figma MCPに接続できない | APIトークンの有効性を確認する。`~/.claude/settings.json` のMCPサーバー設定を確認する |
+| `npm run build` が失敗する | Node.jsバージョンを確認する（LTS推奨）。依存パッケージの競合を `npm ls` で確認する |
+| デプロイ後にページが表示されない | `conoha app logs my-figma-app --app-name my-app` でエラーを確認する |
+| Nginx 404エラー | `nginx.conf` の `try_files` 設定を確認する。SPA対応が必要 |
+| セキュリティグループでブロック | ポート80（HTTP）が開放されているか確認する |
+```
+
+- [ ] **Step 2: Verify the file renders correctly**
+
+```bash
+wc -l recipes/figma-to-deploy.md
+```
+
+Expected: approximately 140-160 lines.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add recipes/figma-to-deploy.md
+git commit -m "Add Figma-to-deploy recipe (#49)"
+```
+
+---
+
+### Task 3: Update SKILL.md with recipe entry
+
+**Files:**
+- Modify: `SKILL.md` (レシピ一覧 table)
+
+- [ ] **Step 1: Add recipe to レシピ一覧 table**
+
+In `SKILL.md`, add a new row to the レシピ一覧 table after the Slurmクラスター entry:
+
+```markdown
+| FigmaデザインからWebアプリ | FigmaデザインからReactコード生成・デプロイ | [recipes/figma-to-deploy.md](recipes/figma-to-deploy.md) |
+```
+
+The table should now have 6 entries.
+
+- [ ] **Step 2: Add Figma trigger phrases to description**
+
+In the YAML frontmatter `description` field, add Figma-related trigger phrases:
+
+```yaml
+description: >
+  ConoHa VPS3 CLIによるインフラ構築スキル。サーバー作成、アプリデプロイ、
+  Kubernetesクラスター、OpenStackプラットフォーム、Slurmクラスターの構築を支援。
+  FigmaデザインからWebアプリを生成してデプロイすることも可能。
+  「ConoHaでサーバーを作って」「k8sクラスターを構築して」「アプリをデプロイして」
+  「Figmaからデプロイ」「デザインからアプリを作って」
+  などのリクエストでトリガー。
+```
+
+- [ ] **Step 3: Verify SKILL.md**
+
+```bash
+grep -c "figma-to-deploy" SKILL.md
+```
+
+Expected: 2 (one in table, one in link)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add SKILL.md
+git commit -m "Add Figma recipe to SKILL.md index (#49)"
+```
+
+---
+
+### Task 4: Push and verify
+
+- [ ] **Step 1: Push to remote**
+
+```bash
+git push origin main
+```
+
+- [ ] **Step 2: Verify on GitHub**
+
+```bash
+gh api repos/crowdy/conoha-cli-skill/contents/recipes/figma-to-deploy.md --jq '.name'
+```
+
+Expected: `figma-to-deploy.md`
+
+- [ ] **Step 3: Close issue (from conoha-cli repo)**
+
+```bash
+cd /home/tkim/dev/crowdy/conoha-cli
+gh issue close 49 --comment "Figma-to-deploy recipe added to conoha-cli-skill. See crowdy/conoha-cli-skill for the recipe."
+```
