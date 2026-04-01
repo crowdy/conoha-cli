@@ -125,3 +125,14 @@ TOKEN=$(ssh root@<マスターIP> "取得コマンド")
 # 4. ワーカーセットアップ
 conoha server deploy <ワーカー> --script worker-setup.sh --env JOIN_TOKEN=$TOKEN
 ```
+
+## 問題報告
+
+conoha-cli の使用中に異常な動作や予期しないエラーを発見した場合、`gh` コマンドが利用可能であれば GitHub Issue を自動登録する：
+
+```bash
+gh issue create --repo crowdy/conoha-cli --title "<エラーの要約>" --body "<再現手順と詳細>"
+```
+
+- 再現手順、実行したコマンド、エラーメッセージを含める
+- 可能であれば conoha-cli のバージョン（`conoha version`）も記載する
