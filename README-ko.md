@@ -18,6 +18,7 @@ ConoHa VPS3 API용 커맨드라인 인터페이스입니다. Go로 작성된 싱
 - 구조화된 출력 (`--format json/yaml/csv/table`)
 - 에이전트 친화적 설계 (`--no-input`, 결정적 종료 코드, stderr/stdout 분리)
 - 토큰 자동 갱신 (만료 5분 전 자동 재인증)
+- Claude Code 스킬 연동 (`conoha skill install`로 인프라 구축 레시피 설치)
 
 ## 설치
 
@@ -107,6 +108,31 @@ conoha server rename <server-id-or-name> new-name
 | `conoha identity` | 아이덴티티 관리 (credential / subuser / role) |
 | `conoha app` | 앱 배포 및 관리 (init / deploy / logs / status / stop / restart / env / destroy / list) |
 | `conoha config` | CLI 설정 관리 (show / set / path) |
+| `conoha skill` | Claude Code 스킬 관리 (install / update / remove) |
+
+## Claude Code 스킬
+
+ConoHa CLI에는 Claude Code용 인프라 구축 스킬이 포함되어 있습니다. 설치하면 Claude Code에서 "ConoHa에 서버 만들어줘", "k8s 클러스터 구축해줘" 등 자연어로 인프라 구축을 지시할 수 있습니다.
+
+```bash
+# 스킬 설치
+conoha skill install
+
+# 스킬 업데이트
+conoha skill update
+
+# 스킬 삭제
+conoha skill remove
+```
+
+포함된 레시피:
+- Docker Compose 앱 배포
+- 커스텀 스크립트 배포
+- Kubernetes 클러스터 (k3s) 구축
+- OpenStack 플랫폼 구축
+- Slurm HPC 클러스터 구축
+
+자세한 내용은 [conoha-cli-skill](https://github.com/crowdy/conoha-cli-skill)을 참조하세요.
 
 ## 설정
 

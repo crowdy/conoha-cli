@@ -18,6 +18,7 @@ A command-line interface for the ConoHa VPS3 API. Written in Go as a single bina
 - Structured output (`--format json/yaml/csv/table`)
 - Agent-friendly design (`--no-input`, deterministic exit codes, stderr/stdout separation)
 - Automatic token refresh (re-authenticates 5 minutes before expiry)
+- Claude Code skill integration (`conoha skill install` to add infrastructure recipes)
 
 ## Installation
 
@@ -107,6 +108,31 @@ conoha server rename <server-id-or-name> new-name
 | `conoha identity` | Identity management (credential / subuser / role) |
 | `conoha app` | App deployment & management (init / deploy / logs / status / stop / restart / env / destroy / list) |
 | `conoha config` | CLI configuration (show / set / path) |
+| `conoha skill` | Claude Code skill management (install / update / remove) |
+
+## Claude Code Skill
+
+ConoHa CLI includes infrastructure automation skills for Claude Code. Once installed, you can use natural language to manage infrastructure — e.g., "Create a server on ConoHa" or "Set up a k8s cluster."
+
+```bash
+# Install the skill
+conoha skill install
+
+# Update the skill
+conoha skill update
+
+# Remove the skill
+conoha skill remove
+```
+
+Included recipes:
+- Docker Compose app deployment
+- Custom script deployment
+- Kubernetes cluster (k3s)
+- OpenStack platform setup
+- Slurm HPC cluster setup
+
+See [conoha-cli-skill](https://github.com/crowdy/conoha-cli-skill) for details.
 
 ## Configuration
 
