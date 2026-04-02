@@ -51,8 +51,8 @@ conoha version v0.1.3
 
 **After**:
 ```
-conoha version v0.1.4 by crowdy@gmail.com
-This is an unofficial tool and is not affiliated with or endorsed by ConoHa/GMO Internet Group.
+conoha version v0.1.4 by Tonghyun Kim
+This is an unofficial tool and is not affiliated with or endorsed by ConoHa / GMO Internet, Inc.
 ```
 
 **Modified files**:
