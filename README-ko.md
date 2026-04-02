@@ -21,6 +21,13 @@ ConoHa VPS3 API용 커맨드라인 인터페이스입니다. Go로 작성된 싱
 
 ## 설치
 
+### Scoop (Windows)
+
+```powershell
+scoop bucket add crowdy https://github.com/crowdy/crowdy-bucket
+scoop install conoha
+```
+
 ### 소스에서 빌드
 
 ```bash
