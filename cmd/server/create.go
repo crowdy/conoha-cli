@@ -136,7 +136,7 @@ var createCmd = &cobra.Command{
 
 		// Resolve boot volume
 		volumeAPI := api.NewVolumeAPI(client)
-		volumeID, created, err := resolveBootVolume(volumeAPI, flavor, imageID, flagVolumeID)
+		volumeID, created, err := resolveBootVolume(volumeAPI, flavor, imageID, flagVolumeID, name)
 		if err != nil {
 			return err
 		}
@@ -402,7 +402,7 @@ func flavorNeedsVolume(flavorName string) bool {
 
 // resolveBootVolume determines the boot volume for server creation.
 // Returns volumeID (empty if not needed), whether a new volume was created, and any error.
-func resolveBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID string, flagVolumeID string) (string, bool, error) {
+func resolveBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID string, flagVolumeID string, serverName string) (string, bool, error) {
 	if !flavorNeedsVolume(flavor.Name) {
 		return "", false, nil
 	}
@@ -420,6 +420,11 @@ func resolveBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID s
 			return "", false, fmt.Errorf("volume size %dGB exceeds maximum %dGB for flavor %s", vol.Size, maxGB, flavor.Name)
 		}
 		return flagVolumeID, false, nil
+	}
+
+	// Non-interactive: auto-create with defaults
+	if !prompt.IsInteractive() {
+		return createBootVolumeWithDefaults(volumeAPI, flavor, imageID, serverName)
 	}
 
 	// Interactive selection
