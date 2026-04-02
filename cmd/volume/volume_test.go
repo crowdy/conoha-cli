@@ -224,3 +224,121 @@ func TestCreateCmd_NoDuplicate(t *testing.T) {
 		t.Error("CreateVolume should have been called")
 	}
 }
+
+func newTestImageAPI(ts *httptest.Server) *api.ImageAPI {
+	client := &api.Client{HTTP: ts.Client(), Token: "test-token", TenantID: "test-tenant"}
+	return api.NewImageAPI(client)
+}
+
+func TestResolveImageID_UUID(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not make API call for UUID")
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	imageAPI := newTestImageAPI(ts)
+	id, err := resolveImageID(imageAPI, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	if err != nil {
+		t.Fatalf("resolveImageID() error: %v", err)
+	}
+	if id != "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" {
+		t.Errorf("expected UUID passthrough, got %q", id)
+	}
+}
+
+func TestResolveImageID_ByName(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/images") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"images": []map[string]any{
+					{"id": "img-123", "name": "vmi-ubuntu-24.04-amd64", "status": "active"},
+					{"id": "img-456", "name": "vmi-centos-9-amd64", "status": "active"},
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	imageAPI := newTestImageAPI(ts)
+	id, err := resolveImageID(imageAPI, "vmi-ubuntu-24.04-amd64")
+	if err != nil {
+		t.Fatalf("resolveImageID() error: %v", err)
+	}
+	if id != "img-123" {
+		t.Errorf("expected img-123, got %q", id)
+	}
+}
+
+func TestResolveImageID_NotFound(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/images") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"images": []map[string]any{}})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	imageAPI := newTestImageAPI(ts)
+	_, err := resolveImageID(imageAPI, "nonexistent-image")
+	if err == nil {
+		t.Fatal("expected error for image not found")
+	}
+	if !strings.Contains(err.Error(), "image not found") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCreateCmd_WithImage(t *testing.T) {
+	var createBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"volumes": []map[string]any{}})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/images") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"images": []map[string]any{
+					{"id": "img-ubuntu-id", "name": "vmi-ubuntu-24.04-amd64", "status": "active"},
+				},
+			})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/volumes") && r.Method == http.MethodPost {
+			json.NewDecoder(r.Body).Decode(&createBody)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]any{
+				"volume": map[string]any{"id": "new-vol", "name": "boot-vol", "status": "creating", "size": 30},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+	t.Setenv("CONOHA_TOKEN", "test-token")
+	t.Setenv("CONOHA_TENANT_ID", "test-tenant")
+
+	cmd := Cmd
+	cmd.SetArgs([]string{"create", "--name", "boot-vol", "--size", "30", "--image", "vmi-ubuntu-24.04-amd64"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("create with --image failed: %v", err)
+	}
+	vol, ok := createBody["volume"].(map[string]any)
+	if !ok {
+		t.Fatal("expected 'volume' key in create body")
+	}
+	if vol["imageRef"] != "img-ubuntu-id" {
+		t.Errorf("expected imageRef 'img-ubuntu-id', got %v", vol["imageRef"])
+	}
+}

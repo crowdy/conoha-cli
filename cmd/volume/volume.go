@@ -45,6 +45,25 @@ func findVolume(volumeAPI *api.VolumeAPI, idOrName string) (*model.Volume, error
 	return nil, fmt.Errorf("volume %q not found", idOrName)
 }
 
+// resolveImageID returns the image UUID. If the input looks like a UUID (36 chars with
+// dashes at positions 8, 13, 18, 23), it is returned as-is. Otherwise, ListImages()
+// is called to find the image by name.
+func resolveImageID(imageAPI *api.ImageAPI, idOrName string) (string, error) {
+	if len(idOrName) == 36 && idOrName[8] == '-' && idOrName[13] == '-' && idOrName[18] == '-' && idOrName[23] == '-' {
+		return idOrName, nil
+	}
+	images, err := imageAPI.ListImages()
+	if err != nil {
+		return "", err
+	}
+	for _, img := range images {
+		if img.Name == idOrName {
+			return img.ID, nil
+		}
+	}
+	return "", fmt.Errorf("image not found: %s", idOrName)
+}
+
 var Cmd = &cobra.Command{
 	Use:   "volume",
 	Short: "Manage block storage volumes",
@@ -63,6 +82,7 @@ func init() {
 	createCmd.Flags().Int("size", 0, "volume size in GB (required)")
 	createCmd.Flags().String("type", "", "volume type")
 	createCmd.Flags().String("description", "", "volume description")
+	createCmd.Flags().String("image", "", "source image ID or name (creates bootable volume)")
 	_ = createCmd.MarkFlagRequired("name")
 	_ = createCmd.MarkFlagRequired("size")
 	cmdutil.AddWaitFlags(createCmd)
@@ -154,6 +174,16 @@ var createCmd = &cobra.Command{
 		req.Volume.Size = size
 		req.Volume.VolumeType = volType
 		req.Volume.Description = desc
+
+		image, _ := cmd.Flags().GetString("image")
+		if image != "" {
+			imageAPI := api.NewImageAPI(client)
+			imageID, err := resolveImageID(imageAPI, image)
+			if err != nil {
+				return err
+			}
+			req.Volume.ImageRef = imageID
+		}
 
 		vol, err := volumeAPI.CreateVolume(req)
 		if err != nil {
