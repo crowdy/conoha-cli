@@ -41,23 +41,31 @@ go install github.com/crowdy/conoha-cli@latest
 **Linux (amd64)**
 
 ```bash
-curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-linux-amd64
-chmod +x conoha
+VERSION=$(curl -s https://api.github.com/repos/crowdy/conoha-cli/releases/latest | grep tag_name | cut -d '"' -f4)
+curl -Lo conoha.tar.gz "https://github.com/crowdy/conoha-cli/releases/download/${VERSION}/conoha-cli_${VERSION#v}_linux_amd64.tar.gz"
+tar xzf conoha.tar.gz conoha
 sudo mv conoha /usr/local/bin/
+rm conoha.tar.gz
 ```
 
 **macOS (Apple Silicon)**
 
 ```bash
-curl -Lo conoha https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-darwin-arm64
-chmod +x conoha
+VERSION=$(curl -s https://api.github.com/repos/crowdy/conoha-cli/releases/latest | grep tag_name | cut -d '"' -f4)
+curl -Lo conoha.tar.gz "https://github.com/crowdy/conoha-cli/releases/download/${VERSION}/conoha-cli_${VERSION#v}_darwin_arm64.tar.gz"
+tar xzf conoha.tar.gz conoha
 sudo mv conoha /usr/local/bin/
+rm conoha.tar.gz
 ```
 
 **Windows (amd64)**
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/crowdy/conoha-cli/releases/latest/download/conoha-windows-amd64.exe -OutFile conoha.exe
+$version = (Invoke-RestMethod https://api.github.com/repos/crowdy/conoha-cli/releases/latest).tag_name
+$v = $version -replace '^v', ''
+Invoke-WebRequest -Uri "https://github.com/crowdy/conoha-cli/releases/download/$version/conoha-cli_${v}_windows_amd64.zip" -OutFile conoha.zip
+Expand-Archive conoha.zip -DestinationPath .
+Remove-Item conoha.zip
 ```
 
 ## 빠른 시작
