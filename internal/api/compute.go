@@ -163,20 +163,6 @@ func (a *ComputeAPI) RebuildServer(id, imageID string) error {
 	})
 }
 
-// AddSecurityGroup adds a security group to a server.
-func (a *ComputeAPI) AddSecurityGroup(id, name string) error {
-	return a.ServerAction(id, map[string]any{
-		"addSecurityGroup": map[string]string{"name": name},
-	})
-}
-
-// RemoveSecurityGroup removes a security group from a server.
-func (a *ComputeAPI) RemoveSecurityGroup(id, name string) error {
-	return a.ServerAction(id, map[string]any{
-		"removeSecurityGroup": map[string]string{"name": name},
-	})
-}
-
 // GetConsole gets the VNC console URL via remote-consoles endpoint (Nova 2.6+).
 func (a *ComputeAPI) GetConsole(id string) (*model.RemoteConsoleResponse, error) {
 	url := fmt.Sprintf("%s/servers/%s/remote-consoles", a.baseURL(), id)

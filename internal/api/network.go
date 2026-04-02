@@ -217,6 +217,85 @@ func (a *NetworkAPI) ListQoSPolicies() ([]model.QoSPolicy, error) {
 	return resp.Policies, nil
 }
 
+// AddServerSecurityGroup adds a security group to all ports of a server.
+func (a *NetworkAPI) AddServerSecurityGroup(serverID, sgName string) error {
+	sgID, err := a.resolveSecurityGroupID(sgName)
+	if err != nil {
+		return err
+	}
+	ports, err := a.ListPortsByDevice(serverID)
+	if err != nil {
+		return err
+	}
+	if len(ports) == 0 {
+		return fmt.Errorf("no ports found for server %s", serverID)
+	}
+	for _, port := range ports {
+		alreadyHas := false
+		for _, id := range port.SecurityGroups {
+			if id == sgID {
+				alreadyHas = true
+				break
+			}
+		}
+		if alreadyHas {
+			continue
+		}
+		sgs := append([]string{}, port.SecurityGroups...)
+		sgs = append(sgs, sgID)
+		if err := a.UpdatePort(port.ID, map[string]any{"security_groups": sgs}); err != nil {
+			return fmt.Errorf("failed to update port %s: %w", port.ID, err)
+		}
+	}
+	return nil
+}
+
+// RemoveServerSecurityGroup removes a security group from all ports of a server.
+func (a *NetworkAPI) RemoveServerSecurityGroup(serverID, sgName string) error {
+	sgID, err := a.resolveSecurityGroupID(sgName)
+	if err != nil {
+		return err
+	}
+	ports, err := a.ListPortsByDevice(serverID)
+	if err != nil {
+		return err
+	}
+	if len(ports) == 0 {
+		return fmt.Errorf("no ports found for server %s", serverID)
+	}
+	for _, port := range ports {
+		var sgs []string
+		found := false
+		for _, id := range port.SecurityGroups {
+			if id == sgID {
+				found = true
+			} else {
+				sgs = append(sgs, id)
+			}
+		}
+		if !found {
+			continue // port doesn't have this security group
+		}
+		if err := a.UpdatePort(port.ID, map[string]any{"security_groups": sgs}); err != nil {
+			return fmt.Errorf("failed to update port %s: %w", port.ID, err)
+		}
+	}
+	return nil
+}
+
+func (a *NetworkAPI) resolveSecurityGroupID(name string) (string, error) {
+	sgs, err := a.ListSecurityGroups()
+	if err != nil {
+		return "", err
+	}
+	for _, sg := range sgs {
+		if sg.Name == name || sg.ID == name {
+			return sg.ID, nil
+		}
+	}
+	return "", fmt.Errorf("security group not found: %s", name)
+}
+
 // AttachPort attaches a port to a server (uses compute API).
 func (a *NetworkAPI) AttachPort(computeClient *Client, serverID, portID string) error {
 	url := fmt.Sprintf("%s/v2.1/servers/%s/os-interface", computeClient.BaseURL("compute"), serverID)
