@@ -30,7 +30,7 @@ brews:
     name: conoha
     homepage: "https://crowdy.github.io/conoha-cli-pages/"
     description: "CLI tool for ConoHa VPS3 API"
-    license: "MIT"
+    license: "Apache-2.0"
 
 scoops:
   - repository:
@@ -40,7 +40,7 @@ scoops:
     name: conoha
     homepage: "https://crowdy.github.io/conoha-cli-pages/"
     description: "CLI tool for ConoHa VPS3 API"
-    license: "MIT"
+    license: "Apache-2.0"
 
 changelog:
   sort: asc
