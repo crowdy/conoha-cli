@@ -198,7 +198,7 @@ func TestResolveBootVolume_NonInteractive_AutoCreates(t *testing.T) {
 	var gotReq model.VolumeCreateRequest
 	mux.HandleFunc("POST /v3/{tenant}/volumes", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		json.Unmarshal(body, &gotReq)
+		_ = json.Unmarshal(body, &gotReq)
 		resp := `{"volume":{"id":"vol-auto-1","status":"available","size":100}}`
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
@@ -278,7 +278,7 @@ func TestCreateBootVolume_WithDefaults(t *testing.T) {
 	var gotReq model.VolumeCreateRequest
 	mux.HandleFunc("POST /v3/{tenant}/volumes", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		json.Unmarshal(body, &gotReq)
+		_ = json.Unmarshal(body, &gotReq)
 		resp := `{"volume":{"id":"vol-new-123","status":"available","size":100}}`
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
