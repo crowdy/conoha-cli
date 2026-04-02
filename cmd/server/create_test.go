@@ -321,3 +321,41 @@ func TestCreateBootVolume_WithDefaults(t *testing.T) {
 		t.Errorf("image ref = %q, want %q", gotReq.Volume.ImageRef, "img-abc")
 	}
 }
+
+func TestCreateBootVolume_512MBPlan(t *testing.T) {
+	mux := http.NewServeMux()
+
+	var gotReq model.VolumeCreateRequest
+	mux.HandleFunc("POST /v3/{tenant}/volumes", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotReq)
+		resp := `{"volume":{"id":"vol-small-1","status":"available","size":30}}`
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(resp))
+	})
+	mux.HandleFunc("GET /v3/{tenant}/volumes/vol-small-1", func(w http.ResponseWriter, r *http.Request) {
+		resp := `{"volume":{"id":"vol-small-1","status":"available","size":30}}`
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(resp))
+	})
+
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	client := &api.Client{HTTP: ts.Client(), Token: "fake-token", TenantID: "tenant-1"}
+	volumeAPI := api.NewVolumeAPI(client)
+	flavor := &model.Flavor{Name: "g2l-t-c1m512", RAM: 512}
+
+	_, _, err := createBootVolumeWithDefaults(volumeAPI, flavor, "img-abc", "small-server")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotReq.Volume.Size != 30 {
+		t.Errorf("volume size = %d, want 30 for 512MB plan", gotReq.Volume.Size)
+	}
+	if gotReq.Volume.Name != "small-server-boot" {
+		t.Errorf("volume name = %q, want %q", gotReq.Volume.Name, "small-server-boot")
+	}
+}
