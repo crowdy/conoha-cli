@@ -140,9 +140,12 @@ func TestRenameCmd_Success(t *testing.T) {
 
 func TestRenameCmd_NoFlags(t *testing.T) {
 	cmd := Cmd
-	cmd.SetArgs([]string{"rename", "some-vol"})
+	cmd.SetArgs([]string{"rename", "some-vol", "--name", "", "--description", ""})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error when no flags provided")
+	}
+	if !strings.Contains(err.Error(), "at least one of --name or --description is required") {
+		t.Errorf("expected validation error, got: %v", err)
 	}
 }
