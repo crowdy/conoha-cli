@@ -62,11 +62,13 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.Version = version
+	rootCmd.SetVersionTemplate("conoha version {{.Version}}\n")
+	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "verbose output")
 	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "config profile to use")
 	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "", "output format: table, json, yaml, csv")
 	rootCmd.PersistentFlags().BoolVar(&flagNoInput, "no-input", false, "disable interactive prompts")
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
-	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "verbose output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "disable color output")
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "skip confirmation prompts")
 	rootCmd.PersistentFlags().Bool("no-headers", false, "hide table/CSV headers")
