@@ -55,6 +55,7 @@ func init() {
 	Cmd.AddCommand(showCmd)
 	Cmd.AddCommand(createCmd)
 	Cmd.AddCommand(deleteCmd)
+	Cmd.AddCommand(renameCmd)
 	Cmd.AddCommand(typesCmd)
 	Cmd.AddCommand(backupCmd)
 
@@ -65,6 +66,9 @@ func init() {
 	_ = createCmd.MarkFlagRequired("name")
 	_ = createCmd.MarkFlagRequired("size")
 	cmdutil.AddWaitFlags(createCmd)
+
+	renameCmd.Flags().String("name", "", "new volume name")
+	renameCmd.Flags().String("description", "", "new volume description")
 }
 
 var listCmd = &cobra.Command{
@@ -179,6 +183,47 @@ var deleteCmd = &cobra.Command{
 		}
 		fmt.Fprintf(os.Stderr, "Volume %s deleted\n", args[0])
 		return nil
+	},
+}
+
+var renameCmd = &cobra.Command{
+	Use:   "rename <id|name>",
+	Short: "Rename a volume",
+	Args:  cmdutil.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		newName, _ := cmd.Flags().GetString("name")
+		newDesc, _ := cmd.Flags().GetString("description")
+
+		if newName == "" && newDesc == "" {
+			return fmt.Errorf("at least one of --name or --description is required")
+		}
+
+		client, err := cmdutil.NewClient(cmd)
+		if err != nil {
+			return err
+		}
+		volumeAPI := api.NewVolumeAPI(client)
+		vol, err := findVolume(volumeAPI, args[0])
+		if err != nil {
+			return err
+		}
+
+		body := map[string]any{}
+		if newName != "" {
+			body["name"] = newName
+		}
+		if newDesc != "" {
+			body["description"] = newDesc
+		}
+		if err := volumeAPI.UpdateVolume(vol.ID, body); err != nil {
+			return err
+		}
+
+		updated, err := volumeAPI.GetVolume(vol.ID)
+		if err != nil {
+			return err
+		}
+		return cmdutil.FormatOutput(cmd, updated)
 	},
 }
 

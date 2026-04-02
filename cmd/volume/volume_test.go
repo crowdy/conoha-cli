@@ -96,3 +96,53 @@ func TestFindVolume_NotFound(t *testing.T) {
 		t.Fatal("expected error for not found")
 	}
 }
+
+func TestRenameCmd_Success(t *testing.T) {
+	var updateBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"volumes": []map[string]any{
+					{"id": "vol-1", "name": "old-name", "status": "available", "size": 100},
+				},
+			})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/volumes/vol-1") && r.Method == http.MethodPut {
+			json.NewDecoder(r.Body).Decode(&updateBody)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/volumes/vol-1") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"volume": map[string]any{"id": "vol-1", "name": "new-name", "status": "available", "size": 100},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+	t.Setenv("CONOHA_TOKEN", "test-token")
+	t.Setenv("CONOHA_TENANT_ID", "test-tenant")
+
+	cmd := Cmd
+	cmd.SetArgs([]string{"rename", "old-name", "--name", "new-name"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("rename command failed: %v", err)
+	}
+	if updateBody["name"] != "new-name" {
+		t.Errorf("expected name 'new-name' in update body, got %v", updateBody["name"])
+	}
+}
+
+func TestRenameCmd_NoFlags(t *testing.T) {
+	cmd := Cmd
+	cmd.SetArgs([]string{"rename", "some-vol"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when no flags provided")
+	}
+}
