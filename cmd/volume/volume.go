@@ -3,6 +3,7 @@ package volume
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -11,6 +12,38 @@ import (
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 )
+
+// findVolume resolves a volume by UUID or name.
+func findVolume(volumeAPI *api.VolumeAPI, idOrName string) (*model.Volume, error) {
+	volumes, err := volumeAPI.ListVolumes()
+	if err != nil {
+		return nil, err
+	}
+	// Try exact ID match
+	for i := range volumes {
+		if volumes[i].ID == idOrName {
+			return &volumes[i], nil
+		}
+	}
+	// Try name match
+	var matched []*model.Volume
+	for i := range volumes {
+		if volumes[i].Name == idOrName {
+			matched = append(matched, &volumes[i])
+		}
+	}
+	if len(matched) == 1 {
+		return matched[0], nil
+	}
+	if len(matched) > 1 {
+		ids := make([]string, len(matched))
+		for i, v := range matched {
+			ids[i] = v.ID
+		}
+		return nil, fmt.Errorf("multiple volumes found with name %q (%s), use UUID instead", idOrName, strings.Join(ids, ", "))
+	}
+	return nil, fmt.Errorf("volume %q not found", idOrName)
+}
 
 var Cmd = &cobra.Command{
 	Use:   "volume",
