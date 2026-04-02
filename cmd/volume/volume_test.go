@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/pflag"
+
 	"github.com/crowdy/conoha-cli/internal/api"
 )
 
@@ -27,10 +29,22 @@ func volumeListHandler(volumes []map[string]any) http.HandlerFunc {
 }
 
 func TestFindVolume_ByUUID(t *testing.T) {
-	vols := []map[string]any{
-		{"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "name": "my-vol", "status": "available", "size": 100},
-	}
-	ts := httptest.NewServer(volumeListHandler(vols))
+	listCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/volumes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"volume": map[string]any{"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "name": "my-vol", "status": "available", "size": 100},
+			})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
+			listCalled = true
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
 	defer ts.Close()
 	t.Setenv("CONOHA_ENDPOINT", ts.URL)
 
@@ -41,6 +55,9 @@ func TestFindVolume_ByUUID(t *testing.T) {
 	}
 	if vol.ID != "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" {
 		t.Errorf("expected ID match, got %q", vol.ID)
+	}
+	if listCalled {
+		t.Error("ListVolumes should not be called when UUID resolves directly")
 	}
 }
 
@@ -139,8 +156,11 @@ func TestRenameCmd_Success(t *testing.T) {
 }
 
 func TestRenameCmd_NoFlags(t *testing.T) {
+	// Reset Changed state from previous tests
+	renameCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+
 	cmd := Cmd
-	cmd.SetArgs([]string{"rename", "some-vol", "--name", "", "--description", ""})
+	cmd.SetArgs([]string{"rename", "some-vol"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error when no flags provided")
@@ -180,7 +200,7 @@ func TestCreateCmd_DuplicateNameWarning(t *testing.T) {
 	t.Setenv("CONOHA_NO_INPUT", "true")
 
 	cmd := Cmd
-	cmd.SetArgs([]string{"create", "--name", "my-volume", "--size", "50"})
+	cmd.SetArgs([]string{"create", "--name", "my-volume", "--size", "50", "--image", ""})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error in no-input mode when duplicate name exists")
@@ -215,7 +235,7 @@ func TestCreateCmd_NoDuplicate(t *testing.T) {
 	t.Setenv("CONOHA_TENANT_ID", "test-tenant")
 
 	cmd := Cmd
-	cmd.SetArgs([]string{"create", "--name", "unique-vol", "--size", "50"})
+	cmd.SetArgs([]string{"create", "--name", "unique-vol", "--size", "50", "--image", ""})
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("create should succeed with no duplicates: %v", err)
@@ -291,7 +311,7 @@ func TestResolveImageID_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for image not found")
 	}
-	if !strings.Contains(err.Error(), "image not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

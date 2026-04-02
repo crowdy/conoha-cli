@@ -14,12 +14,22 @@ import (
 )
 
 // findVolume resolves a volume by UUID or name.
+// If the input looks like a UUID, it tries GetVolume directly first.
 func findVolume(volumeAPI *api.VolumeAPI, idOrName string) (*model.Volume, error) {
+	// Try direct ID lookup for UUID-shaped input
+	if len(idOrName) == 36 && idOrName[8] == '-' && idOrName[13] == '-' && idOrName[18] == '-' && idOrName[23] == '-' {
+		v, err := volumeAPI.GetVolume(idOrName)
+		if err == nil {
+			return v, nil
+		}
+	}
+
+	// Fall back to listing and searching by name
 	volumes, err := volumeAPI.ListVolumes()
 	if err != nil {
 		return nil, err
 	}
-	// Try exact ID match
+	// Try exact ID match (for non-UUID IDs)
 	for i := range volumes {
 		if volumes[i].ID == idOrName {
 			return &volumes[i], nil
@@ -61,7 +71,7 @@ func resolveImageID(imageAPI *api.ImageAPI, idOrName string) (string, error) {
 			return img.ID, nil
 		}
 	}
-	return "", fmt.Errorf("image not found: %s", idOrName)
+	return "", fmt.Errorf("image %q not found", idOrName)
 }
 
 var Cmd = &cobra.Command{
@@ -241,10 +251,7 @@ var renameCmd = &cobra.Command{
 	Short: "Rename a volume",
 	Args:  cmdutil.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		newName, _ := cmd.Flags().GetString("name")
-		newDesc, _ := cmd.Flags().GetString("description")
-
-		if newName == "" && newDesc == "" {
+		if !cmd.Flags().Changed("name") && !cmd.Flags().Changed("description") {
 			return fmt.Errorf("at least one of --name or --description is required")
 		}
 
@@ -259,10 +266,12 @@ var renameCmd = &cobra.Command{
 		}
 
 		body := map[string]any{}
-		if newName != "" {
+		if cmd.Flags().Changed("name") {
+			newName, _ := cmd.Flags().GetString("name")
 			body["name"] = newName
 		}
-		if newDesc != "" {
+		if cmd.Flags().Changed("description") {
+			newDesc, _ := cmd.Flags().GetString("description")
 			body["description"] = newDesc
 		}
 		if err := volumeAPI.UpdateVolume(vol.ID, body); err != nil {
