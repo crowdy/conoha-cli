@@ -438,6 +438,33 @@ func resolveBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID s
 	return selectExistingVolume(volumeAPI)
 }
 
+// createBootVolumeWithDefaults creates a boot volume using sensible defaults (no prompts).
+// Used in non-interactive environments when --volume is not specified.
+func createBootVolumeWithDefaults(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID, serverName string) (string, bool, error) {
+	volName := serverName + "-boot"
+	sizeGB := maxBootVolumeGB(flavor)
+
+	fmt.Fprintf(os.Stderr, "Creating boot volume %q (%dGB, %s)...\n", volName, sizeGB, defaultBootVolumeType)
+	req := &model.VolumeCreateRequest{}
+	req.Volume.Size = sizeGB
+	req.Volume.Name = volName
+	req.Volume.VolumeType = defaultBootVolumeType
+	req.Volume.ImageRef = imageID
+	vol, err := volumeAPI.CreateVolume(req)
+	if err != nil {
+		return "", false, fmt.Errorf("creating boot volume: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Waiting for volume %s to become available...\n", vol.ID)
+	if err := waitForVolumeAvailable(volumeAPI, vol.ID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: boot volume %s was created but may not be ready.\n", vol.ID)
+		fmt.Fprintf(os.Stderr, "You can delete it with: conoha volume delete %s\n", vol.ID)
+		return "", true, err
+	}
+	fmt.Fprintf(os.Stderr, "Volume %s is ready.\n", vol.ID)
+	return vol.ID, true, nil
+}
+
 func createBootVolume(volumeAPI *api.VolumeAPI, flavor *model.Flavor, imageID string) (string, bool, error) {
 	volName, err := prompt.String("Volume name")
 	if err != nil {
