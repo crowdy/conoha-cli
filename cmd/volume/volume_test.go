@@ -149,3 +149,78 @@ func TestRenameCmd_NoFlags(t *testing.T) {
 		t.Errorf("expected validation error, got: %v", err)
 	}
 }
+
+func TestCreateCmd_DuplicateNameWarning(t *testing.T) {
+	createCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"volumes": []map[string]any{
+					{"id": "existing-vol", "name": "my-volume", "status": "available", "size": 100},
+				},
+			})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/volumes") && r.Method == http.MethodPost {
+			createCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]any{
+				"volume": map[string]any{"id": "new-vol", "name": "my-volume", "status": "creating", "size": 50},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+	t.Setenv("CONOHA_TOKEN", "test-token")
+	t.Setenv("CONOHA_TENANT_ID", "test-tenant")
+	t.Setenv("CONOHA_NO_INPUT", "true")
+
+	cmd := Cmd
+	cmd.SetArgs([]string{"create", "--name", "my-volume", "--size", "50"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error in no-input mode when duplicate name exists")
+	}
+	if createCalled {
+		t.Error("CreateVolume should not have been called when duplicate detected in no-input mode")
+	}
+}
+
+func TestCreateCmd_NoDuplicate(t *testing.T) {
+	createCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"volumes": []map[string]any{}})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/volumes") && r.Method == http.MethodPost {
+			createCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]any{
+				"volume": map[string]any{"id": "new-vol", "name": "unique-vol", "status": "creating", "size": 50},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+	t.Setenv("CONOHA_TOKEN", "test-token")
+	t.Setenv("CONOHA_TENANT_ID", "test-tenant")
+
+	cmd := Cmd
+	cmd.SetArgs([]string{"create", "--name", "unique-vol", "--size", "50"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("create should succeed with no duplicates: %v", err)
+	}
+	if !createCalled {
+		t.Error("CreateVolume should have been called")
+	}
+}

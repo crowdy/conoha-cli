@@ -128,13 +128,33 @@ var createCmd = &cobra.Command{
 		volType, _ := cmd.Flags().GetString("type")
 		desc, _ := cmd.Flags().GetString("description")
 
+		// Check for duplicate volume names
+		volumeAPI := api.NewVolumeAPI(client)
+		volumes, err := volumeAPI.ListVolumes()
+		if err != nil {
+			return err
+		}
+		for _, v := range volumes {
+			if v.Name == name {
+				fmt.Fprintf(os.Stderr, "Warning: volume with name %q already exists (ID: %s)\n", name, v.ID)
+				ok, err := prompt.Confirm("Create anyway?")
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(os.Stderr, "Cancelled.")
+					return nil
+				}
+				break
+			}
+		}
+
 		req := &model.VolumeCreateRequest{}
 		req.Volume.Name = name
 		req.Volume.Size = size
 		req.Volume.VolumeType = volType
 		req.Volume.Description = desc
 
-		volumeAPI := api.NewVolumeAPI(client)
 		vol, err := volumeAPI.CreateVolume(req)
 		if err != nil {
 			return err
