@@ -1,7 +1,7 @@
 # conoha - ConoHa VPS3 CLI
 
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [日本語](README.md) | [한국어](README-ko.md)
 
@@ -190,4 +190,4 @@ make clean     # Clean artifacts
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+Apache License 2.0 - See [LICENSE](LICENSE) for details.

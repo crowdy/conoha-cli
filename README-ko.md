@@ -1,7 +1,7 @@
 # conoha - ConoHa VPS3 CLI
 
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [日本語](README.md) | [English](README-en.md)
 
@@ -190,4 +190,4 @@ make clean     # 산출물 삭제
 
 ## 라이선스
 
-MIT License - 자세한 내용은 [LICENSE](LICENSE)를 참조하세요.
+Apache License 2.0 - 자세한 내용은 [LICENSE](LICENSE)를 참조하세요.
