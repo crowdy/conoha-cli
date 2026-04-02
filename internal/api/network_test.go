@@ -862,3 +862,193 @@ func TestDetachPort(t *testing.T) {
 		t.Fatalf("DetachPort() error: %v", err)
 	}
 }
+
+// --- AddServerSecurityGroup / RemoveServerSecurityGroup ---
+
+func TestAddServerSecurityGroup(t *testing.T) {
+	const serverID = "srv-001"
+	const sgID = "sg-abc"
+	const sgName = "my-sg"
+	const portID = "port-001"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/v2.0/security-groups"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"security_groups": []map[string]any{
+					{"id": sgID, "name": sgName, "description": "", "security_group_rules": []any{}},
+				},
+			})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/v2.0/ports"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"ports": []map[string]any{
+					{"id": portID, "network_id": "net-1", "device_id": serverID, "status": "ACTIVE", "mac_address": "fa:16:3e:00:00:01", "security_groups": []string{"sg-existing"}},
+				},
+			})
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/v2.0/ports/"+portID):
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			port := body["port"].(map[string]any)
+			sgs := port["security_groups"].([]any)
+			if len(sgs) != 2 {
+				t.Errorf("expected 2 security groups, got %d", len(sgs))
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	api := NewNetworkAPI(newTestClient(ts))
+	if err := api.AddServerSecurityGroup(serverID, sgName); err != nil {
+		t.Fatalf("AddServerSecurityGroup() error: %v", err)
+	}
+}
+
+func TestAddServerSecurityGroupAlreadyExists(t *testing.T) {
+	const serverID = "srv-001"
+	const sgID = "sg-abc"
+	const sgName = "my-sg"
+	const portID = "port-001"
+
+	putCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/v2.0/security-groups"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"security_groups": []map[string]any{
+					{"id": sgID, "name": sgName, "description": "", "security_group_rules": []any{}},
+				},
+			})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/v2.0/ports"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"ports": []map[string]any{
+					{"id": portID, "network_id": "net-1", "device_id": serverID, "status": "ACTIVE", "mac_address": "fa:16:3e:00:00:01", "security_groups": []string{sgID}},
+				},
+			})
+		case r.Method == http.MethodPut:
+			putCalled = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	api := NewNetworkAPI(newTestClient(ts))
+	if err := api.AddServerSecurityGroup(serverID, sgName); err != nil {
+		t.Fatalf("AddServerSecurityGroup() error: %v", err)
+	}
+	if putCalled {
+		t.Error("expected no PUT call when security group already exists on port")
+	}
+}
+
+func TestRemoveServerSecurityGroup(t *testing.T) {
+	const serverID = "srv-001"
+	const sgID = "sg-abc"
+	const sgName = "my-sg"
+	const portID = "port-001"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/v2.0/security-groups"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"security_groups": []map[string]any{
+					{"id": sgID, "name": sgName, "description": "", "security_group_rules": []any{}},
+				},
+			})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/v2.0/ports"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"ports": []map[string]any{
+					{"id": portID, "network_id": "net-1", "device_id": serverID, "status": "ACTIVE", "mac_address": "fa:16:3e:00:00:01", "security_groups": []string{"sg-other", sgID}},
+				},
+			})
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/v2.0/ports/"+portID):
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			port := body["port"].(map[string]any)
+			sgs := port["security_groups"].([]any)
+			if len(sgs) != 1 {
+				t.Errorf("expected 1 security group after removal, got %d", len(sgs))
+			}
+			if sgs[0] != "sg-other" {
+				t.Errorf("expected remaining sg 'sg-other', got %v", sgs[0])
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	api := NewNetworkAPI(newTestClient(ts))
+	if err := api.RemoveServerSecurityGroup(serverID, sgName); err != nil {
+		t.Fatalf("RemoveServerSecurityGroup() error: %v", err)
+	}
+}
+
+func TestRemoveServerSecurityGroupNotOnPort(t *testing.T) {
+	const serverID = "srv-001"
+	const sgID = "sg-abc"
+	const sgName = "my-sg"
+	const portID = "port-001"
+
+	putCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/v2.0/security-groups"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"security_groups": []map[string]any{
+					{"id": sgID, "name": sgName, "description": "", "security_group_rules": []any{}},
+				},
+			})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/v2.0/ports"):
+			json.NewEncoder(w).Encode(map[string]any{
+				"ports": []map[string]any{
+					{"id": portID, "network_id": "net-1", "device_id": serverID, "status": "ACTIVE", "mac_address": "fa:16:3e:00:00:01", "security_groups": []string{"sg-other"}},
+				},
+			})
+		case r.Method == http.MethodPut:
+			putCalled = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	api := NewNetworkAPI(newTestClient(ts))
+	if err := api.RemoveServerSecurityGroup(serverID, sgName); err != nil {
+		t.Fatalf("RemoveServerSecurityGroup() error: %v", err)
+	}
+	if putCalled {
+		t.Error("expected no PUT call when security group is not on any port")
+	}
+}
+
+func TestAddServerSecurityGroupNotFound(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"security_groups": []any{}})
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	api := NewNetworkAPI(newTestClient(ts))
+	err := api.AddServerSecurityGroup("srv-001", "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent security group")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error, got: %v", err)
+	}
+}
