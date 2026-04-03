@@ -154,7 +154,9 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
 
 ## Claude Code スキル
 
-ConoHa CLI には Claude Code 用のインフラ構築スキルが用意されています。インストールすると、Claude Code から「ConoHa でサーバーを作って」「k8s クラスターを構築して」などの自然言語でインフラ構築を指示できます。
+ConoHa CLI には Claude Code 用のインフラ構築スキルが用意されています。インストールすると、Claude Code から自然言語でインフラ構築を指示できます。
+
+### インストール
 
 ```bash
 # スキルをインストール
@@ -167,12 +169,25 @@ conoha skill update
 conoha skill remove
 ```
 
-スキルには以下のレシピが含まれます：
-- Docker Compose アプリデプロイ
-- カスタムスクリプトデプロイ
-- Kubernetes クラスター（k3s）構築
-- OpenStack プラットフォーム構築
-- Slurm HPC クラスター構築
+### 使い方
+
+Claude Code で以下のように指示するだけで、スキルが自動的にトリガーされます：
+
+```
+> ConoHa でサーバーを作って
+> k8s クラスターを構築して
+> アプリをデプロイして
+```
+
+### レシピ一覧
+
+| レシピ | 説明 |
+|-------|------|
+| Docker Compose アプリデプロイ | `conoha app deploy` によるコンテナアプリのデプロイ |
+| カスタムスクリプトデプロイ | スタートアップスクリプトによるサーバー構成 |
+| Kubernetes クラスター | k3s によるクラスター構築（coming soon） |
+| OpenStack プラットフォーム | DevStack によるプラットフォーム構築（coming soon） |
+| Slurm HPC クラスター | Slurm による HPC クラスター構築（coming soon） |
 
 詳細は [conoha-cli-skill](https://github.com/crowdy/conoha-cli-skill) を参照してください。
 
