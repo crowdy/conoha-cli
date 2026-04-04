@@ -112,7 +112,9 @@ conoha server rename <server-id-or-name> new-name
 
 ## Claude Code Skill
 
-ConoHa CLI includes infrastructure automation skills for Claude Code. Once installed, you can use natural language to manage infrastructure — e.g., "Create a server on ConoHa" or "Set up a k8s cluster."
+ConoHa CLI includes infrastructure automation skills for Claude Code. Once installed, you can use natural language to manage infrastructure.
+
+### Installation
 
 ```bash
 # Install the skill
@@ -125,12 +127,25 @@ conoha skill update
 conoha skill remove
 ```
 
-Included recipes:
-- Docker Compose app deployment
-- Custom script deployment
-- Kubernetes cluster (k3s)
-- OpenStack platform setup
-- Slurm HPC cluster setup
+### Usage
+
+Simply give instructions in Claude Code, and the skill will be triggered automatically:
+
+```
+> Create a server on ConoHa
+> Set up a k8s cluster
+> Deploy an app
+```
+
+### Recipe List
+
+| Recipe | Description |
+|--------|-------------|
+| Docker Compose App Deploy | Deploy containerized apps via `conoha app deploy` |
+| Custom Script Deploy | Server provisioning with startup scripts |
+| Kubernetes Cluster | k3s cluster setup (coming soon) |
+| OpenStack Platform | DevStack platform setup (coming soon) |
+| Slurm HPC Cluster | Slurm HPC cluster setup (coming soon) |
 
 See [conoha-cli-skill](https://github.com/crowdy/conoha-cli-skill) for details.
 
