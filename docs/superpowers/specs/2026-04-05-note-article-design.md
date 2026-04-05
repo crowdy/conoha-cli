@@ -2,82 +2,73 @@
 
 ## 概要
 
-note.com に投稿する conoha-cli 紹介記事の設計。日本語 6000 字以上、技術ブログ風のハンズオン形式。CLI の手動操作と Claude Code Skill による自然言語操作の対比を軸に構成する。
+note.com に投稿する conoha-cli 紹介記事の設計。日本語 6000 字以上。前半は客観的な紹介、後半は体験記スタイルで CLI 手動操作 → Claude Code Skill 自然言語操作の対比を軸に構成する。
 
 ## ターゲット読者
 
-- Claude Code を使っている開発者（AI ツール活用層）
-- ConoHa VPS 既存ユーザー
-- VPS / インフラ構築に興味がある CLI 初心者
+Claude Code を使っている開発者、ConoHa VPS 既存ユーザー、VPS やインフラ構築に興味がある初心者。エンジニアでない読者にも読みやすいよう配慮する。
 
 ## 記事の形式
 
 - テキスト + コード例のみ（画像なし）
 - Markdown で原稿作成、note.com への投稿は手動
-- 技術ブログ風: コード例多め、ハンズオン形式
+- コード例は残すが、前後を会話調の文章でつなぐ
+- 機能の列挙は箇条書きではなく、体験の流れの中で自然に登場させる
 
-## 構成: 「CLI → Skill 進化ストーリー」型
+## 文体ガイドライン
 
-前半で CLI の基本操作とアプリデプロイを手動で見せ、後半で skill による自然言語操作を紹介する対比構成。
+箇条書きによる機能列挙を避け、段落で流れるように書く。コード例の前後は「まず○○してみた。すると△△が返ってきた。」のような体験調の文章でつなぐ。非エンジニアの読者にも状況が伝わるよう、操作の意味や感想を丁寧に補足する。
 
-### セクション 1: 導入（〜600字）
+## 構成: 「客観紹介 → 体験記」型
 
-- タイトル案: 「CLIひとつでVPSデプロイ完了 — conoha-cliとClaude Code Skillで変わるインフラ構築」
-- VPS でアプリを動かすまでの手順の多さを共感ポイントとして提示
-- conoha-cli + skill で解決できるという全体像
-- 対象読者の明示
+前半2セクションで客観的な紹介（信頼感）、後半2セクションで一人称体験記（親近感）。
 
-### セクション 2: conoha-cli とは（〜800字）
+### セクション 1: 導入（〜900字）— 客観紹介
 
-- Go 製 CLI、シングルバイナリ、macOS/Linux/Windows 対応
-- 主な特徴: 複数プロファイル、構造化出力、自動トークンリフレッシュ、`--no-input`
-- インストール手順（`brew install crowdy/tap/conoha` + `conoha auth login`）
-- 「シングルバイナリひとつで VPS のライフサイクル全体を管理」という価値の訴求
+タイトル案: 「CLIひとつでVPSデプロイ完了 — conoha-cliとClaude Code Skillで変わるインフラ構築」
 
-### セクション 3: 基本操作 — サーバー作成から SSH まで（〜1000字）
+VPS でアプリを動かすまでの手順の多さを共感ポイントとして提示する。管理画面でサーバーを作り、SSH で入って環境構築し、Docker を入れて、コードを転送して…という「あるある」を具体的に描写する。Terraform や Ansible のような IaC ツールは大規模向けで、個人〜小規模には重い。conoha-cli はその中間に位置する「ちょうどいい」ツールであり、さらに Claude Code の skill を使えば自然言語でインフラ構築まで可能、という全体像を提示する。対象読者の明示も行う。
 
-- `conoha flavor list` / `conoha image list` でプラン・OS 確認
-- `conoha server create` でサーバー作成（フラグ付きのコード例）
-- `conoha server list` で状態確認
-- `conoha server ssh` で接続
-- 管理画面不要でターミナルから数コマンドで完結する手軽さを強調
+### セクション 2: conoha-cli とは（〜1200字）— 客観紹介
 
-### セクション 4: アプリデプロイ — docker-compose.yml があれば OK（〜1200字）
+段落形式で conoha-cli の特徴を紹介する。Go 製シングルバイナリで macOS/Linux/Windows に対応していること、複数プロファイルの切り替え、JSON/YAML 出力と jq の組み合わせ、自動トークンリフレッシュなどを、機能カタログではなく「こういう場面でこう便利」という文脈で伝える。
 
-- `conoha app` コマンド群の紹介
-- Express.js アプリを例にデプロイ全フロー:
-  1. `conoha app init` — Docker 環境構築 + git リポジトリ作成
-  2. `conoha app deploy` — tar アップロード → `docker compose up`
-  3. `conoha app status` / `conoha app logs --follow`
-- 運用系コマンド: `app env set`, `app restart`, `app destroy`
-- `.dockerignore` 尊重、`.env.server` 永続化などの実用ディテール
+インストール方法は Homebrew、`go install`、GitHub Releases の3通りを紹介。認証フロー（`conoha auth login` の対話）も簡潔に触れ、「ここまでで準備完了」という区切りを作る。
 
-### セクション 5: Claude Code Skill — 自然言語でインフラ構築（〜1500字）
+### セクション 3: 体験記 — CLI でサーバーを立ててアプリをデプロイしてみた（〜2500字）
 
-- 記事のクライマックス
-- `conoha skill install` で skill をインストール
-- skill の概念説明（Claude Code のドメイン知識プラグイン）
-- Claude Code との対話形式デモ:
-  - 「ConoHa にサーバーを作って Express アプリをデプロイして」
-  - skill が自動ロード → レシピに沿ってステップバイステップ実行
-- 用意されているレシピ一覧:
-  - Docker Compose アプリ / カスタムスクリプト / k3s / OpenStack / Slurm
-- 手動操作との対比: 自然言語で同じ結果が得られるインパクト
-- CLI 知識がなくても使える敷居の低さ + CLI を理解していれば動作が透明で安心
+一人称の体験記として、ゼロからアプリデプロイまでの全フローを時系列で書く。
 
-### セクション 6: まとめ（〜500字）
+まずサーバーを作るところから。`conoha flavor list` でプランを眺め、どれを選ぶか迷う過程。キーペアを作り、`conoha server create --wait` でサーバーが立ち上がるのを待つ。`--wait` をつけると起動完了まで待ってくれるのが地味に嬉しい、といった感想を交える。
 
-- CLI + skill の2段構えの振り返り
-- 設計思想: シングルバイナリ、AI 親和性、docker-compose.yml ベース
-- リンク集:
-  - `brew install crowdy/tap/conoha`
-  - `github.com/crowdy/conoha-cli`
-  - `github.com/crowdy/conoha-cli-skill`
+次に `conoha app init` を実行すると、Docker と Docker Compose のインストール、git リポジトリの作成まで一発で終わる。裏で何が起きているかの解説も軽く入れる。
+
+Express.js の簡単なアプリを用意し、`docker-compose.yml` と `Dockerfile` のサンプルコードを掲載。`conoha app deploy` でデプロイし、`app status` でコンテナが動いていることを確認、`app logs --follow` でリアルタイムログを見る。この一連の流れを、操作 → 結果 → 感想 というリズムで書く。
+
+環境変数の設定（`app env set`）、再起動（`app restart`）、複数アプリの管理（`app list`）にも体験の中で触れる。`.dockerignore` が尊重されること、`.env.server` で環境変数が永続化されることなど、使ってみて初めてわかる実用ディテールも自然に織り込む。
+
+### セクション 4: 体験記 — Skill を入れて自然言語でやり直してみた（〜2200字）
+
+記事のクライマックス。セクション3で手動でやったことを、今度は Claude Code に頼んでみる、という導入。
+
+`conoha skill install` で skill をインストール。skill とは何かを、「Claude Code にインフラ構築の知識を教えるプラグインのようなもの」と非エンジニアにも伝わる言葉で説明する。
+
+Claude Code に「ConoHa にサーバーを作って Express アプリをデプロイして」と投げてみる。対話のやりとりをリアルに再現し、フレーバーを確認される → 答える → サーバーが作られる → Docker 環境が初期化される → デプロイされる、という流れを会話形式で書く。「さっき手動で30分かけたことが、数分の対話で終わった」という感想。
+
+2つ目のデモとして「Kubernetes クラスターを作って」という別のレシピも短く紹介。レシピによってアプローチが変わることを見せる。
+
+skill の中身は CLI コマンドの組み合わせであり、ブラックボックスではないという安心感を伝える。自分で skill をカスタマイズ・拡張できる可能性にも触れる。
+
+### セクション 5: まとめ（〜800字）— 客観 + 体験の振り返り
+
+体験を通じて感じた CLI と Skill の使い分けを文章で語る。手動で理解して skill で加速する、というワークフロー。AI エージェントとの親和性（終了コード、`--no-input`、JSON 出力）がなぜ重要かを、体験を踏まえて実感として伝える。
+
+OSS としてのコントリビューション歓迎、GitHub リポジトリと skill リポジトリへのリンク、インストールコマンドを添えて締めくくる。
 
 ## 想定文字数
 
-合計約 5600 字（骨格）。コード例・解説の充実で 6000 字以上に到達。
+合計約 7600 字。コード例と体験描写の充実で 8000 字前後に到達する見込み。
 
 ## 成果物
 
-- `docs/articles/2026-04-05-note-conoha-cli.md` に Markdown 原稿を作成
+`docs/articles/2026-04-05-note-conoha-cli.md` に Markdown 原稿を作成。
