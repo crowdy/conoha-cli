@@ -23,7 +23,13 @@ func TestResetCmd_HasAppFlags(t *testing.T) {
 }
 
 func TestResetCmd_RequiresExactlyOneArg(t *testing.T) {
-	if resetCmd.Args == nil {
-		t.Fatal("reset command should have Args validation")
+	if err := resetCmd.Args(resetCmd, []string{}); err == nil {
+		t.Error("should reject zero args")
+	}
+	if err := resetCmd.Args(resetCmd, []string{"server1"}); err != nil {
+		t.Errorf("should accept one arg: %v", err)
+	}
+	if err := resetCmd.Args(resetCmd, []string{"server1", "server2"}); err == nil {
+		t.Error("should reject two args")
 	}
 }

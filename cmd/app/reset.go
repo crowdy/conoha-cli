@@ -18,7 +18,7 @@ func init() {
 var resetCmd = &cobra.Command{
 	Use:   "reset <id|name>",
 	Short: "Destroy and redeploy an app from scratch",
-	Long:  "Equivalent to running destroy + init + deploy in sequence. Stops containers, removes all app data, re-initializes the environment, and deploys the current directory.",
+	Long:  "Equivalent to running destroy + init + deploy in sequence. Stops containers, removes all app data, re-initializes the environment, and deploys the current directory.\n\nNote: server-side environment variables (set via 'app env set') will be lost.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, err := connectToApp(cmd, args)
