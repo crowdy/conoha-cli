@@ -12,6 +12,7 @@ import (
 
 func init() {
 	addAppFlags(destroyCmd)
+	destroyCmd.Flags().Bool("yes", false, "skip confirmation prompt")
 }
 
 var destroyCmd = &cobra.Command{
@@ -26,13 +27,16 @@ var destroyCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
-		ok, err := prompt.Confirm(fmt.Sprintf("Destroy app %q on %s? All data will be deleted.", ctx.AppName, ctx.Server.Name))
-		if err != nil {
-			return err
-		}
-		if !ok {
-			fmt.Fprintln(os.Stderr, "Cancelled.")
-			return nil
+		yes, _ := cmd.Flags().GetBool("yes")
+		if !yes {
+			ok, err := prompt.Confirm(fmt.Sprintf("Destroy app %q on %s? All data will be deleted.", ctx.AppName, ctx.Server.Name))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return nil
+			}
 		}
 
 		script := generateDestroyScript(ctx.AppName)

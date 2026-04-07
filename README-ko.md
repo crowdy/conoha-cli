@@ -112,7 +112,9 @@ conoha server rename <server-id-or-name> new-name
 
 ## Claude Code 스킬
 
-ConoHa CLI에는 Claude Code용 인프라 구축 스킬이 포함되어 있습니다. 설치하면 Claude Code에서 "ConoHa에 서버 만들어줘", "k8s 클러스터 구축해줘" 등 자연어로 인프라 구축을 지시할 수 있습니다.
+ConoHa CLI에는 Claude Code용 인프라 구축 스킬이 포함되어 있습니다. 설치하면 Claude Code에서 자연어로 인프라 구축을 지시할 수 있습니다.
+
+### 설치
 
 ```bash
 # 스킬 설치
@@ -125,12 +127,25 @@ conoha skill update
 conoha skill remove
 ```
 
-포함된 레시피:
-- Docker Compose 앱 배포
-- 커스텀 스크립트 배포
-- Kubernetes 클러스터 (k3s) 구축
-- OpenStack 플랫폼 구축
-- Slurm HPC 클러스터 구축
+### 사용법
+
+Claude Code에서 다음과 같이 지시하면 스킬이 자동으로 트리거됩니다:
+
+```
+> ConoHa에 서버 만들어줘
+> k8s 클러스터 구축해줘
+> 앱을 배포해줘
+```
+
+### 레시피 목록
+
+| 레시피 | 설명 |
+|--------|------|
+| Docker Compose 앱 배포 | `conoha app deploy`를 통한 컨테이너 앱 배포 |
+| 커스텀 스크립트 배포 | 스타트업 스크립트를 이용한 서버 구성 |
+| Kubernetes 클러스터 | k3s를 이용한 클러스터 구축 (coming soon) |
+| OpenStack 플랫폼 | DevStack을 이용한 플랫폼 구축 (coming soon) |
+| Slurm HPC 클러스터 | Slurm을 이용한 HPC 클러스터 구축 (coming soon) |
 
 자세한 내용은 [conoha-cli-skill](https://github.com/crowdy/conoha-cli-skill)을 참조하세요.
 
