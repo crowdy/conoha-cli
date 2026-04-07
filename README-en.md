@@ -106,7 +106,7 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS management (domain / record) |
 | `conoha storage` | Object storage (container / ls / cp / rm / publish) |
 | `conoha identity` | Identity management (credential / subuser / role) |
-| `conoha app` | App deployment & management (init / deploy / logs / status / stop / restart / env / destroy / list) |
+| `conoha app` | App deployment & management (init / deploy / logs / status / stop / restart / env / destroy / reset / list) |
 | `conoha config` | CLI configuration (show / set / path) |
 | `conoha skill` | Claude Code skill management (install / update / remove) |
 

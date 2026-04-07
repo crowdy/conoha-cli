@@ -112,7 +112,7 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS 管理（domain / record） |
 | `conoha storage` | オブジェクトストレージ（container / ls / cp / rm / publish） |
 | `conoha identity` | アイデンティティ管理（credential / subuser / role） |
-| `conoha app` | アプリデプロイ・管理（init / deploy / logs / status / stop / restart / env / destroy / list） |
+| `conoha app` | アプリデプロイ・管理（init / deploy / logs / status / stop / restart / env / destroy / reset / list） |
 | `conoha config` | CLI 設定管理（show / set / path） |
 | `conoha skill` | Claude Code スキル管理（install / update / remove） |
 

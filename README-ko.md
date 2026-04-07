@@ -106,7 +106,7 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS 관리 (domain / record) |
 | `conoha storage` | 오브젝트 스토리지 (container / ls / cp / rm / publish) |
 | `conoha identity` | 아이덴티티 관리 (credential / subuser / role) |
-| `conoha app` | 앱 배포 및 관리 (init / deploy / logs / status / stop / restart / env / destroy / list) |
+| `conoha app` | 앱 배포 및 관리 (init / deploy / logs / status / stop / restart / env / destroy / reset / list) |
 | `conoha config` | CLI 설정 관리 (show / set / path) |
 | `conoha skill` | Claude Code 스킬 관리 (install / update / remove) |
 
