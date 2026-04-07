@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,26 @@ import (
 
 	"github.com/crowdy/conoha-cli/internal/api"
 )
+
+// setupTestConfig creates a temporary config directory with a minimal config.yaml
+// so that cmdutil.NewClient() can find a profile in tests.
+func setupTestConfig(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := []byte("version: 1\nactive_profile: default\nprofiles:\n  default:\n    tenant_id: test-tenant\n    region: c3j1\n")
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), cfg, 0600); err != nil {
+		t.Fatal(err)
+	}
+	creds := []byte("version: 1\ncredentials:\n  default:\n    username: test\n    password: test\n")
+	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), creds, 0600); err != nil {
+		t.Fatal(err)
+	}
+	tokens := []byte("version: 1\ntokens:\n  default:\n    token: test-token\n    expires: \"2099-01-01T00:00:00Z\"\n")
+	if err := os.WriteFile(filepath.Join(dir, "tokens.yaml"), tokens, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CONOHA_CONFIG_DIR", dir)
+}
 
 func newTestVolumeAPI(ts *httptest.Server) *api.VolumeAPI {
 	client := &api.Client{HTTP: ts.Client(), Token: "test-token", TenantID: "test-tenant"}
@@ -115,6 +137,7 @@ func TestFindVolume_NotFound(t *testing.T) {
 }
 
 func TestRenameCmd_Success(t *testing.T) {
+	setupTestConfig(t)
 	var updateBody map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
@@ -171,6 +194,7 @@ func TestRenameCmd_NoFlags(t *testing.T) {
 }
 
 func TestCreateCmd_DuplicateNameWarning(t *testing.T) {
+	setupTestConfig(t)
 	createCalled := false
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
@@ -211,6 +235,7 @@ func TestCreateCmd_DuplicateNameWarning(t *testing.T) {
 }
 
 func TestCreateCmd_NoDuplicate(t *testing.T) {
+	setupTestConfig(t)
 	createCalled := false
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
@@ -317,6 +342,7 @@ func TestResolveImageID_NotFound(t *testing.T) {
 }
 
 func TestCreateCmd_WithImage(t *testing.T) {
+	setupTestConfig(t)
 	var createBody map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/volumes/detail") && r.Method == http.MethodGet {
