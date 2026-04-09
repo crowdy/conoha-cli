@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/spf13/cobra"
 
+	clerrors "github.com/crowdy/conoha-cli/internal/errors"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
@@ -31,13 +33,33 @@ var deployCmd = &cobra.Command{
 	},
 }
 
+// composeFileRegex allows alphanumeric, hyphens, dots, underscores, and path separators.
+var composeFileRegex = regexp.MustCompile(`^[a-zA-Z0-9/][a-zA-Z0-9._/-]*$`)
+
+// validateComposeFilePath checks that the path contains only safe characters.
+func validateComposeFilePath(path string) error {
+	if !composeFileRegex.MatchString(path) {
+		return &clerrors.ValidationError{
+			Field:   "compose-file",
+			Message: fmt.Sprintf("invalid compose file path %q: must contain only alphanumeric, hyphens, dots, underscores, and slashes", path),
+		}
+	}
+	return nil
+}
+
 // resolveComposeFile returns the compose file to use.
 // If explicit is non-empty, it validates that the file exists.
 // Otherwise it auto-detects using the priority order.
 func resolveComposeFile(explicit string) (string, error) {
 	if explicit != "" {
+		if err := validateComposeFilePath(explicit); err != nil {
+			return "", err
+		}
 		if _, err := os.Stat(explicit); err != nil {
-			return "", fmt.Errorf("compose file not found: %s", explicit)
+			return "", &clerrors.ValidationError{
+				Field:   "compose-file",
+				Message: fmt.Sprintf("compose file not found: %s", explicit),
+			}
 		}
 		return explicit, nil
 	}
@@ -113,5 +135,8 @@ func detectComposeFile(dir string) (string, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("no compose file found in current directory (checked conoha-docker-compose.yml/yaml, docker-compose.yml/yaml, compose.yml/yaml)")
+	return "", &clerrors.ValidationError{
+		Field:   "compose-file",
+		Message: "no compose file found in current directory (checked conoha-docker-compose.yml/yaml, docker-compose.yml/yaml, compose.yml/yaml)",
+	}
 }

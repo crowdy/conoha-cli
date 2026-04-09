@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	clerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 func TestAddAppFlags(t *testing.T) {
@@ -94,6 +96,44 @@ func TestResolveComposeFile(t *testing.T) {
 	}
 	if err != nil && !strings.Contains(err.Error(), "compose file not found") {
 		t.Errorf("expected error to contain %q, got %q", "compose file not found", err.Error())
+	}
+	// Should be a ValidationError (exit code 4)
+	if _, ok := err.(*clerrors.ValidationError); !ok {
+		t.Errorf("expected ValidationError, got %T", err)
+	}
+}
+
+func TestValidateComposeFilePath(t *testing.T) {
+	valid := []string{
+		"docker-compose.yml",
+		"conoha-docker-compose.yaml",
+		"compose.yml",
+		"path/to/compose.yml",
+		"my_app-compose.yml",
+	}
+	for _, p := range valid {
+		if err := validateComposeFilePath(p); err != nil {
+			t.Errorf("expected %q to be valid, got error: %v", p, err)
+		}
+	}
+
+	invalid := []string{
+		"it's-compose.yml",
+		"compose;rm -rf.yml",
+		"$(whoami).yml",
+		"file`cmd`.yml",
+		"a b.yml",
+		"compose|pipe.yml",
+		"compose&bg.yml",
+	}
+	for _, p := range invalid {
+		err := validateComposeFilePath(p)
+		if err == nil {
+			t.Errorf("expected %q to be invalid", p)
+		}
+		if _, ok := err.(*clerrors.ValidationError); !ok {
+			t.Errorf("expected ValidationError for %q, got %T", p, err)
+		}
 	}
 }
 
