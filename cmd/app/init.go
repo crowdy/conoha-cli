@@ -100,11 +100,26 @@ while read -r oldrev newrev refname; do
 
     cd "$WORK_DIR"
 
-    if [ -f docker-compose.yml ] || [ -f docker-compose.yaml ] || [ -f compose.yml ] || [ -f compose.yaml ]; then
-        echo "==> Building and starting containers..."
-        docker compose up -d --build --remove-orphans
+    COMPOSE_FILE=""
+    if [ -f conoha-docker-compose.yml ]; then
+        COMPOSE_FILE=conoha-docker-compose.yml
+    elif [ -f conoha-docker-compose.yaml ]; then
+        COMPOSE_FILE=conoha-docker-compose.yaml
+    elif [ -f docker-compose.yml ]; then
+        COMPOSE_FILE=docker-compose.yml
+    elif [ -f docker-compose.yaml ]; then
+        COMPOSE_FILE=docker-compose.yaml
+    elif [ -f compose.yml ]; then
+        COMPOSE_FILE=compose.yml
+    elif [ -f compose.yaml ]; then
+        COMPOSE_FILE=compose.yaml
+    fi
+
+    if [ -n "$COMPOSE_FILE" ]; then
+        echo "==> Building and starting containers with $COMPOSE_FILE..."
+        docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
         echo "==> Deploy complete!"
-        docker compose ps
+        docker compose -f "$COMPOSE_FILE" ps
     else
         echo "Warning: No compose file found in $WORK_DIR"
         echo "Push a docker-compose.yml to enable auto-deploy."
