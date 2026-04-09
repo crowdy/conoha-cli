@@ -53,7 +53,10 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 	user, _ := cmd.Flags().GetString("user")
 	port, _ := cmd.Flags().GetString("port")
 	identity, _ := cmd.Flags().GetString("identity")
-	composeFile, _ := cmd.Flags().GetString("compose-file")
+	var composeFile string
+	if f := cmd.Flags().Lookup("compose-file"); f != nil {
+		composeFile = f.Value.String()
+	}
 
 	if identity == "" {
 		identity = internalssh.ResolveKeyPath(s.KeyName)
