@@ -29,7 +29,7 @@ var resetCmd = &cobra.Command{
 
 		yes, _ := cmd.Flags().GetBool("yes")
 		if !yes {
-			ok, err := prompt.Confirm(fmt.Sprintf("Reset app %q on %s? This will destroy all data and redeploy.", ctx.AppName, ctx.Server.Name))
+			ok, err := prompt.Confirm(fmt.Sprintf("Reset app %q on %s? All running containers on this server will be stopped and app data will be destroyed.", ctx.AppName, ctx.Server.Name))
 			if err != nil {
 				return err
 			}
@@ -39,10 +39,21 @@ var resetCmd = &cobra.Command{
 			}
 		}
 
+		// Step 0: Stop all apps on the server
+		fmt.Fprintln(os.Stderr, "==> Stopping all apps on server...")
+		stopAllScript := generateStopAllScript()
+		exitCode, err := internalssh.RunScript(ctx.Client, stopAllScript, nil, os.Stdout, os.Stderr)
+		if err != nil {
+			return fmt.Errorf("stop all apps failed: %w", err)
+		}
+		if exitCode != 0 {
+			return fmt.Errorf("stop all apps exited with code %d", exitCode)
+		}
+
 		// Step 1: Destroy
 		fmt.Fprintln(os.Stderr, "==> Destroying app...")
 		script := generateDestroyScript(ctx.AppName)
-		exitCode, err := internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
+		exitCode, err = internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
 		if err != nil {
 			return fmt.Errorf("destroy failed: %w", err)
 		}
@@ -70,4 +81,18 @@ var resetCmd = &cobra.Command{
 		fmt.Fprintf(os.Stderr, "App %q reset complete.\n", ctx.AppName)
 		return nil
 	},
+}
+
+func generateStopAllScript() []byte {
+	return []byte(`#!/bin/bash
+set -euo pipefail
+
+echo "==> Stopping all containers on this server..."
+if [ -n "$(docker ps -q 2>/dev/null)" ]; then
+    docker stop $(docker ps -q)
+    docker container prune -f
+fi
+docker network prune -f 2>/dev/null || true
+echo "==> All containers stopped."
+`)
 }
