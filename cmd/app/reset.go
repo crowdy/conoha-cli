@@ -39,10 +39,21 @@ var resetCmd = &cobra.Command{
 			}
 		}
 
+		// Step 0: Stop all apps on the server
+		fmt.Fprintln(os.Stderr, "==> Stopping all apps on server...")
+		stopAllScript := generateStopAllScript()
+		exitCode, err := internalssh.RunScript(ctx.Client, stopAllScript, nil, os.Stdout, os.Stderr)
+		if err != nil {
+			return fmt.Errorf("stop all apps failed: %w", err)
+		}
+		if exitCode != 0 {
+			return fmt.Errorf("stop all apps exited with code %d", exitCode)
+		}
+
 		// Step 1: Destroy
 		fmt.Fprintln(os.Stderr, "==> Destroying app...")
 		script := generateDestroyScript(ctx.AppName)
-		exitCode, err := internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
+		exitCode, err = internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
 		if err != nil {
 			return fmt.Errorf("destroy failed: %w", err)
 		}
@@ -70,4 +81,25 @@ var resetCmd = &cobra.Command{
 		fmt.Fprintf(os.Stderr, "App %q reset complete.\n", ctx.AppName)
 		return nil
 	},
+}
+
+func generateStopAllScript() []byte {
+	return []byte(`#!/bin/bash
+set -euo pipefail
+
+echo "==> Stopping all app containers on this server..."
+for dir in /opt/conoha/*/; do
+    [ -d "$dir" ] || continue
+    # skip .git bare repos
+    case "$dir" in *.git/) continue;; esac
+    if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/docker-compose.yaml" ] || \
+       [ -f "$dir/compose.yml" ] || [ -f "$dir/compose.yaml" ] || \
+       [ -f "$dir/conoha-docker-compose.yml" ] || [ -f "$dir/conoha-docker-compose.yaml" ]; then
+        echo "Stopping containers in $dir..."
+        cd "$dir"
+        docker compose down --remove-orphans 2>/dev/null || true
+    fi
+done
+echo "==> All apps stopped."
+`)
 }
