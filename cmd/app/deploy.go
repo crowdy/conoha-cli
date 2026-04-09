@@ -82,7 +82,7 @@ func deployApp(ctx *appContext) error {
 	composeCmd := fmt.Sprintf(
 		"ENV_FILE=/opt/conoha/%s.env.server; "+
 			"if [ -f \"$ENV_FILE\" ]; then cp \"$ENV_FILE\" %s/.env; fi && "+
-			"cd %s && docker compose -f %s up -d --build --remove-orphans && docker compose -f %s ps",
+			"cd %s && docker compose -f '%s' up -d --build --remove-orphans && docker compose -f '%s' ps",
 		ctx.AppName, workDir, workDir, composeFile, composeFile)
 	exitCode, err = internalssh.RunCommand(ctx.Client, composeCmd, os.Stdout, os.Stderr)
 	if err != nil {

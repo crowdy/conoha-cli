@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -68,6 +69,31 @@ func TestDetectComposeFile(t *testing.T) {
 		if got != name {
 			t.Errorf("expected %q, got %q", name, got)
 		}
+	}
+}
+
+func TestResolveComposeFile(t *testing.T) {
+	// Explicit file that exists
+	dir := t.TempDir()
+	f := filepath.Join(dir, "custom-compose.yml")
+	if err := os.WriteFile(f, []byte("version: '3'"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveComposeFile(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != f {
+		t.Errorf("expected %q, got %q", f, got)
+	}
+
+	// Explicit file that does not exist
+	_, err = resolveComposeFile("/nonexistent/compose.yml")
+	if err == nil {
+		t.Error("expected error for nonexistent file")
+	}
+	if err != nil && !strings.Contains(err.Error(), "compose file not found") {
+		t.Errorf("expected error to contain %q, got %q", "compose file not found", err.Error())
 	}
 }
 
