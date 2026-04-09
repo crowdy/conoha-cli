@@ -29,7 +29,7 @@ var resetCmd = &cobra.Command{
 
 		yes, _ := cmd.Flags().GetBool("yes")
 		if !yes {
-			ok, err := prompt.Confirm(fmt.Sprintf("Reset app %q on %s? This will destroy all data and redeploy.", ctx.AppName, ctx.Server.Name))
+			ok, err := prompt.Confirm(fmt.Sprintf("Reset app %q on %s? All running containers on this server will be stopped and app data will be destroyed.", ctx.AppName, ctx.Server.Name))
 			if err != nil {
 				return err
 			}
@@ -87,19 +87,12 @@ func generateStopAllScript() []byte {
 	return []byte(`#!/bin/bash
 set -euo pipefail
 
-echo "==> Stopping all app containers on this server..."
-for dir in /opt/conoha/*/; do
-    [ -d "$dir" ] || continue
-    # skip .git bare repos
-    case "$dir" in *.git/) continue;; esac
-    if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/docker-compose.yaml" ] || \
-       [ -f "$dir/compose.yml" ] || [ -f "$dir/compose.yaml" ] || \
-       [ -f "$dir/conoha-docker-compose.yml" ] || [ -f "$dir/conoha-docker-compose.yaml" ]; then
-        echo "Stopping containers in $dir..."
-        cd "$dir"
-        docker compose down --remove-orphans 2>/dev/null || true
-    fi
-done
-echo "==> All apps stopped."
+echo "==> Stopping all containers on this server..."
+if [ -n "$(docker ps -q 2>/dev/null)" ]; then
+    docker stop $(docker ps -q)
+    docker container prune -f
+fi
+docker network prune -f 2>/dev/null || true
+echo "==> All containers stopped."
 `)
 }
