@@ -13,6 +13,7 @@ import (
 
 func init() {
 	addAppFlags(deployCmd)
+	deployCmd.Flags().StringP("compose-file", "f", "", "compose file path (auto-detected if not specified)")
 }
 
 var deployCmd = &cobra.Command{
@@ -32,8 +33,8 @@ var deployCmd = &cobra.Command{
 
 func deployApp(ctx *appContext) error {
 	// Pre-flight: check compose file exists locally
-	if !hasComposeFile(".") {
-		return fmt.Errorf("no docker-compose.yml/yaml or compose.yml/yaml found in current directory")
+	if _, err := detectComposeFile("."); err != nil {
+		return err
 	}
 
 	// Load .dockerignore
@@ -80,12 +81,22 @@ func deployApp(ctx *appContext) error {
 	return nil
 }
 
-// hasComposeFile checks if a docker compose file exists in dir.
-func hasComposeFile(dir string) bool {
-	for _, name := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
+// composeFileNames lists compose files in detection priority order.
+var composeFileNames = []string{
+	"conoha-docker-compose.yml",
+	"conoha-docker-compose.yaml",
+	"docker-compose.yml",
+	"docker-compose.yaml",
+	"compose.yml",
+	"compose.yaml",
+}
+
+// detectComposeFile returns the first compose file found in dir.
+func detectComposeFile(dir string) (string, error) {
+	for _, name := range composeFileNames {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-			return true
+			return name, nil
 		}
 	}
-	return false
+	return "", fmt.Errorf("no compose file found in current directory (checked conoha-docker-compose.yml/yaml, docker-compose.yml/yaml, compose.yml/yaml)")
 }

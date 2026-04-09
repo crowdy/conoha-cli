@@ -29,22 +29,61 @@ func TestAddAppFlags(t *testing.T) {
 	}
 }
 
-func TestHasComposeFile(t *testing.T) {
+func TestDeployCmdHasComposeFileFlag(t *testing.T) {
+	f := deployCmd.Flags().Lookup("compose-file")
+	if f == nil {
+		t.Fatal("expected compose-file flag to be registered on deployCmd")
+	}
+	if f.Shorthand != "f" {
+		t.Errorf("compose-file shorthand: got %q, want %q", f.Shorthand, "f")
+	}
+}
+
+func TestDetectComposeFile(t *testing.T) {
 	// Empty dir — no compose file
 	dir := t.TempDir()
-	if hasComposeFile(dir) {
-		t.Error("expected false for empty dir")
+	_, err := detectComposeFile(dir)
+	if err == nil {
+		t.Error("expected error for empty dir")
 	}
 
 	// Each valid compose file name
-	names := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+	names := []string{
+		"conoha-docker-compose.yml",
+		"conoha-docker-compose.yaml",
+		"docker-compose.yml",
+		"docker-compose.yaml",
+		"compose.yml",
+		"compose.yaml",
+	}
 	for _, name := range names {
 		d := t.TempDir()
 		if err := os.WriteFile(filepath.Join(d, name), []byte("version: '3'"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		if !hasComposeFile(d) {
-			t.Errorf("expected true for %s", name)
+		got, err := detectComposeFile(d)
+		if err != nil {
+			t.Errorf("expected no error for %s, got %v", name, err)
 		}
+		if got != name {
+			t.Errorf("expected %q, got %q", name, got)
+		}
+	}
+}
+
+func TestDetectComposeFilePriority(t *testing.T) {
+	// conoha-docker-compose.yml takes priority over docker-compose.yml
+	dir := t.TempDir()
+	for _, name := range []string{"conoha-docker-compose.yml", "docker-compose.yml"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("version: '3'"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := detectComposeFile(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "conoha-docker-compose.yml" {
+		t.Errorf("expected conoha-docker-compose.yml to take priority, got %q", got)
 	}
 }
