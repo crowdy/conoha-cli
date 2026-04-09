@@ -14,11 +14,12 @@ import (
 )
 
 type appContext struct {
-	Client  *ssh.Client
-	AppName string
-	Server  *model.Server
-	IP      string
-	User    string
+	Client      *ssh.Client
+	AppName     string
+	Server      *model.Server
+	IP          string
+	User        string
+	ComposeFile string
 }
 
 func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
@@ -52,6 +53,7 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 	user, _ := cmd.Flags().GetString("user")
 	port, _ := cmd.Flags().GetString("port")
 	identity, _ := cmd.Flags().GetString("identity")
+	composeFile, _ := cmd.Flags().GetString("compose-file")
 
 	if identity == "" {
 		identity = internalssh.ResolveKeyPath(s.KeyName)
@@ -71,11 +73,12 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 	}
 
 	return &appContext{
-		Client:  sshClient,
-		AppName: appName,
-		Server:  s,
-		IP:      ip,
-		User:    user,
+		Client:      sshClient,
+		AppName:     appName,
+		Server:      s,
+		IP:          ip,
+		User:        user,
+		ComposeFile: composeFile,
 	}, nil
 }
 

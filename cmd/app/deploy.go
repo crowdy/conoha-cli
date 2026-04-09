@@ -31,11 +31,26 @@ var deployCmd = &cobra.Command{
 	},
 }
 
+// resolveComposeFile returns the compose file to use.
+// If explicit is non-empty, it validates that the file exists.
+// Otherwise it auto-detects using the priority order.
+func resolveComposeFile(explicit string) (string, error) {
+	if explicit != "" {
+		if _, err := os.Stat(explicit); err != nil {
+			return "", fmt.Errorf("compose file not found: %s", explicit)
+		}
+		return explicit, nil
+	}
+	return detectComposeFile(".")
+}
+
 func deployApp(ctx *appContext) error {
-	// Pre-flight: check compose file exists locally
-	if _, err := detectComposeFile("."); err != nil {
+	// Resolve compose file
+	composeFile, err := resolveComposeFile(ctx.ComposeFile)
+	if err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "Using compose file: %s\n", composeFile)
 
 	// Load .dockerignore
 	patterns, err := loadIgnorePatterns(".")
@@ -67,8 +82,8 @@ func deployApp(ctx *appContext) error {
 	composeCmd := fmt.Sprintf(
 		"ENV_FILE=/opt/conoha/%s.env.server; "+
 			"if [ -f \"$ENV_FILE\" ]; then cp \"$ENV_FILE\" %s/.env; fi && "+
-			"cd %s && docker compose up -d --build --remove-orphans && docker compose ps",
-		ctx.AppName, workDir, workDir)
+			"cd %s && docker compose -f %s up -d --build --remove-orphans && docker compose -f %s ps",
+		ctx.AppName, workDir, workDir, composeFile, composeFile)
 	exitCode, err = internalssh.RunCommand(ctx.Client, composeCmd, os.Stdout, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("deploy failed: %w", err)
