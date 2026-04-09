@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 
@@ -62,6 +63,11 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	if version == "dev" {
+		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			version = info.Main.Version
+		}
+	}
 	rootCmd.Version = version
 	rootCmd.SetVersionTemplate("conoha version {{.Version}}\n")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "verbose output")
