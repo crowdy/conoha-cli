@@ -336,7 +336,7 @@ func selectFlavor(compute *api.ComputeAPI) (*model.Flavor, error) {
 		}
 		flavorMap[f.ID] = &usable[i]
 	}
-	id, err := prompt.Select("Select flavor", items)
+	id, err := prompt.Select("Select flavor", items, "use --flavor <id> to specify")
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +359,7 @@ func selectKeypair(compute *api.ComputeAPI) (string, error) {
 			Value: kp.Name,
 		}
 	}
-	return prompt.Select("Select keypair", items)
+	return prompt.Select("Select keypair", items, "use --key-name <name> to specify")
 }
 
 func selectImage(imageAPI *api.ImageAPI) (string, error) {
@@ -383,7 +383,7 @@ func selectImage(imageAPI *api.ImageAPI) (string, error) {
 			Value: img.ID,
 		}
 	}
-	return prompt.Select("Select image", items)
+	return prompt.Select("Select image", items, "use --image <id> to specify")
 }
 
 // maxBootVolumeGB returns the maximum boot volume size in GB for the given flavor.
@@ -608,7 +608,7 @@ func selectSecurityGroups(networkAPI *api.NetworkAPI) ([]string, error) {
 
 	var selected []string
 	for {
-		choice, err := prompt.Select("Select security group (or skip)", items)
+		choice, err := prompt.Select("Select security group (or skip)", items, "use --security-group <name> to specify (repeatable)")
 		if err != nil {
 			return nil, err
 		}

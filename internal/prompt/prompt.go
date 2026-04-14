@@ -75,12 +75,10 @@ func Password(label string) (string, error) {
 }
 
 // Confirm asks for yes/no confirmation.
+// In non-interactive mode (--no-input or --yes), it auto-confirms without prompting.
 func Confirm(label string) (bool, error) {
-	if config.IsYes() {
+	if config.IsYes() || config.IsNoInput() {
 		return true, nil
-	}
-	if config.IsNoInput() {
-		return false, fmt.Errorf("confirmation required but --no-input is set; use --yes to auto-confirm")
 	}
 	fmt.Fprintf(os.Stderr, "%s [y/N]: ", label)
 	reader := bufio.NewReader(os.Stdin)
