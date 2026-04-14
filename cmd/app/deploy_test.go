@@ -17,11 +17,17 @@ func TestBuildUploadCmd_EnvServerPathInsideWorkDir(t *testing.T) {
 	}
 }
 
-func TestBuildUploadCmd_BacksUpEnvBeforeRmRf(t *testing.T) {
-	// Bug #85: rm -rf deletes .env before extraction; existing .env must be preserved
+func TestBuildUploadCmd_UsesExistenceSentinelNotContentCheck(t *testing.T) {
+	// Bug #85 edge case: an empty .env file must also be preserved after redeploy.
+	// Using [ -n "$ENV_BACKUP" ] (content check) would silently drop a zero-byte .env
+	// because command substitution strips trailing newlines and empty content is falsy.
+	// The fix uses a boolean ENV_EXISTS sentinel instead.
 	cmd := buildUploadCmd("/opt/conoha/myapp")
-	if !strings.Contains(cmd, "ENV_BACKUP") {
-		t.Error("buildUploadCmd must backup existing .env before rm -rf (#85)")
+	if !strings.Contains(cmd, "ENV_EXISTS") {
+		t.Error("buildUploadCmd must use ENV_EXISTS sentinel to detect pre-existing .env (#85)")
+	}
+	if strings.Contains(cmd, `[ -n "$ENV_BACKUP" ]`) {
+		t.Error("buildUploadCmd must not gate restore on content; empty .env would be silently lost")
 	}
 }
 

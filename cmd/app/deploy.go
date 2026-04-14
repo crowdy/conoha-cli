@@ -119,13 +119,17 @@ func deployApp(ctx *appContext) error {
 // It preserves any pre-existing .env on the server:
 //   - If the new archive contains .env.server, it is copied to .env (fixes #81).
 //   - Otherwise the pre-existing .env is restored from a backup (fixes #85).
+//
+// ENV_EXISTS is used as a boolean sentinel (not content check) so that an empty
+// .env file is still preserved after redeploy.
 func buildUploadCmd(workDir string) string {
 	return fmt.Sprintf(
-		"ENV_BACKUP=$([ -f '%[1]s/.env' ] && cat '%[1]s/.env' || true) && "+
+		"ENV_EXISTS=0; [ -f '%[1]s/.env' ] && ENV_EXISTS=1 || true; "+
+			"ENV_BACKUP=$([ -f '%[1]s/.env' ] && cat '%[1]s/.env' || true) && "+
 			"rm -rf '%[1]s' && mkdir -p '%[1]s' && tar xzf - -C '%[1]s' && "+
 			"{ if [ -f '%[1]s/.env.server' ]; then "+
 			"cp '%[1]s/.env.server' '%[1]s/.env'; "+
-			"elif [ -n \"$ENV_BACKUP\" ]; then "+
+			"elif [ \"$ENV_EXISTS\" = \"1\" ]; then "+
 			"printf '%%s' \"$ENV_BACKUP\" > '%[1]s/.env'; "+
 			"fi; }",
 		workDir)

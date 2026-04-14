@@ -50,7 +50,12 @@ func readIgnoreFile(path, prefix string) ([]string, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Negation patterns ("!foo") are not supported: the simple glob-based
+		// walk cannot re-include files that were already skipped by SkipDir.
+		if strings.HasPrefix(line, "!") {
 			continue
 		}
 		line = strings.TrimRight(line, "/")
