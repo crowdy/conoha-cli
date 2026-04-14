@@ -88,10 +88,11 @@ func deployApp(ctx *appContext) error {
 	}
 	fmt.Fprintf(os.Stderr, "Uploading to %s (%s)...\n", ctx.Server.Name, ctx.IP)
 
-	// Transfer tar (clean deploy: remove old files first)
+	// Upload: backup existing .env, clean-extract archive, then restore .env from
+	// .env.server (if present in archive) or from the backup.
 	workDir := "/opt/conoha/" + ctx.AppName
-	tarCmd := fmt.Sprintf("rm -rf %s && mkdir -p %s && tar xzf - -C %s", workDir, workDir, workDir)
-	exitCode, err := internalssh.RunWithStdin(ctx.Client, tarCmd, &buf, os.Stdout, os.Stderr)
+	uploadCmd := buildUploadCmd(workDir)
+	exitCode, err := internalssh.RunWithStdin(ctx.Client, uploadCmd, &buf, os.Stdout, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("upload failed: %w", err)
 	}
@@ -99,13 +100,9 @@ func deployApp(ctx *appContext) error {
 		return fmt.Errorf("upload exited with code %d", exitCode)
 	}
 
-	// Docker compose up (copy .env.server if exists)
+	// Run docker compose (passes --env-file when .env exists for build-time vars)
 	fmt.Fprintf(os.Stderr, "Building and starting containers...\n")
-	composeCmd := fmt.Sprintf(
-		"ENV_FILE=/opt/conoha/%s.env.server; "+
-			"if [ -f \"$ENV_FILE\" ]; then cp \"$ENV_FILE\" %s/.env; fi && "+
-			"cd %s && docker compose -f '%s' up -d --build --remove-orphans && docker compose -f '%s' ps",
-		ctx.AppName, workDir, workDir, composeFile, composeFile)
+	composeCmd := buildComposeCmd(workDir, composeFile)
 	exitCode, err = internalssh.RunCommand(ctx.Client, composeCmd, os.Stdout, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("deploy failed: %w", err)
@@ -116,6 +113,37 @@ func deployApp(ctx *appContext) error {
 
 	fmt.Fprintf(os.Stderr, "Deploy complete.\n")
 	return nil
+}
+
+// buildUploadCmd generates the shell command that uploads the tar archive.
+// It preserves any pre-existing .env on the server:
+//   - If the new archive contains .env.server, it is copied to .env (fixes #81).
+//   - Otherwise the pre-existing .env is restored from a backup (fixes #85).
+func buildUploadCmd(workDir string) string {
+	return fmt.Sprintf(
+		"ENV_BACKUP=$([ -f '%[1]s/.env' ] && cat '%[1]s/.env' || true) && "+
+			"rm -rf '%[1]s' && mkdir -p '%[1]s' && tar xzf - -C '%[1]s' && "+
+			"{ if [ -f '%[1]s/.env.server' ]; then "+
+			"cp '%[1]s/.env.server' '%[1]s/.env'; "+
+			"elif [ -n \"$ENV_BACKUP\" ]; then "+
+			"printf '%%s' \"$ENV_BACKUP\" > '%[1]s/.env'; "+
+			"fi; }",
+		workDir)
+}
+
+// buildComposeCmd generates the shell command that runs docker compose.
+// When .env exists, --env-file is passed so variables are substituted in
+// compose.yml including build.args, making them available at Docker build time (#82).
+func buildComposeCmd(workDir, composeFile string) string {
+	return fmt.Sprintf(
+		"cd '%[1]s' && "+
+			"{ if [ -f .env ]; then "+
+			"docker compose --env-file .env -f '%[2]s' up -d --build --remove-orphans; "+
+			"else "+
+			"docker compose -f '%[2]s' up -d --build --remove-orphans; "+
+			"fi; } && "+
+			"docker compose -f '%[2]s' ps",
+		workDir, composeFile)
 }
 
 // composeFileNames lists compose files in detection priority order.

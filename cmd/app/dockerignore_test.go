@@ -40,6 +40,37 @@ func TestLoadIgnorePatterns_WithFile(t *testing.T) {
 	}
 }
 
+func TestLoadIgnorePatterns_SubdirDockerignore(t *testing.T) {
+	dir := t.TempDir()
+	// Root .dockerignore does NOT list node_modules
+	if err := os.WriteFile(filepath.Join(dir, ".dockerignore"), []byte("*.log\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// frontend subdirectory has its own .dockerignore
+	if err := os.MkdirAll(filepath.Join(dir, "frontend"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "frontend", ".dockerignore"), []byte("node_modules\n.next\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	patterns, err := loadIgnorePatterns(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !shouldExclude("frontend/node_modules", patterns) {
+		t.Error("frontend/node_modules should be excluded by frontend/.dockerignore")
+	}
+	if !shouldExclude("frontend/.next", patterns) {
+		t.Error("frontend/.next should be excluded by frontend/.dockerignore")
+	}
+	// backend/node_modules must NOT be excluded (no pattern covers it)
+	if shouldExclude("backend/node_modules", patterns) {
+		t.Error("backend/node_modules should NOT be excluded")
+	}
+}
+
 func TestShouldExclude(t *testing.T) {
 	patterns := []string{".git", "node_modules", "*.log"}
 
