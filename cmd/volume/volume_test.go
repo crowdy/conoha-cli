@@ -226,11 +226,12 @@ func TestCreateCmd_DuplicateNameWarning(t *testing.T) {
 	cmd := Cmd
 	cmd.SetArgs([]string{"create", "--name", "my-volume", "--size", "50", "--image", ""})
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error in no-input mode when duplicate name exists")
+	// --no-input implies --yes: duplicate-name warning is auto-confirmed and volume is created
+	if err != nil {
+		t.Fatalf("expected no error in no-input mode (auto-confirm duplicate): %v", err)
 	}
-	if createCalled {
-		t.Error("CreateVolume should not have been called when duplicate detected in no-input mode")
+	if !createCalled {
+		t.Error("CreateVolume should have been called (--no-input auto-confirms duplicate warning)")
 	}
 }
 

@@ -30,17 +30,15 @@ func TestConfirm_Yes_Env(t *testing.T) {
 	}
 }
 
-func TestConfirm_NoInput_Without_Yes(t *testing.T) {
+func TestConfirm_NoInput_ImpliesYes(t *testing.T) {
+	// #83: --no-input should auto-confirm like --yes; requiring both is redundant
 	t.Setenv("CONOHA_NO_INPUT", "1")
 	ok, err := Confirm("Delete?")
-	if ok {
-		t.Fatal("expected false when --no-input without --yes")
+	if err != nil {
+		t.Fatalf("--no-input should auto-confirm without error (#83): %v", err)
 	}
-	if err == nil {
-		t.Fatal("expected error when --no-input without --yes")
-	}
-	if got := err.Error(); got != "confirmation required but --no-input is set; use --yes to auto-confirm" {
-		t.Fatalf("unexpected error message: %s", got)
+	if !ok {
+		t.Fatal("--no-input should return true (auto-confirm) (#83)")
 	}
 }
 
