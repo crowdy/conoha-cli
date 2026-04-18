@@ -75,6 +75,12 @@ Expand-Archive conoha.zip -DestinationPath .
 Remove-Item conoha.zip
 ```
 
+> **Tip**: [Scoop](https://scoop.sh/) を導入済みであれば、`%PATH%` に別途登録するより以下のコマンドで `shims` に配置するのが簡単です：
+>
+> ```cmd
+> move conoha.exe %USERPROFILE%\scoop\shims\
+> ```
+
 ## クイックスタート
 
 ```bash

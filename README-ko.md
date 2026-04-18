@@ -69,6 +69,12 @@ Expand-Archive conoha.zip -DestinationPath .
 Remove-Item conoha.zip
 ```
 
+> **Tip**: [Scoop](https://scoop.sh/)이 이미 설치되어 있다면 `%PATH%`를 따로 수정하는 것보다 아래 명령으로 `shims` 디렉터리에 배치하는 편이 간단합니다:
+>
+> ```cmd
+> move conoha.exe %USERPROFILE%\scoop\shims\
+> ```
+
 ## 빠른 시작
 
 ```bash

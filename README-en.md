@@ -69,6 +69,12 @@ Expand-Archive conoha.zip -DestinationPath .
 Remove-Item conoha.zip
 ```
 
+> **Tip**: If you already have [Scoop](https://scoop.sh/) installed, dropping the binary into the `shims` directory is easier than editing `%PATH%`:
+>
+> ```cmd
+> move conoha.exe %USERPROFILE%\scoop\shims\
+> ```
+
 ## Quick Start
 
 ```bash
