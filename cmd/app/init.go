@@ -5,129 +5,131 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh"
 
+	"github.com/crowdy/conoha-cli/cmd/cmdutil"
+	"github.com/crowdy/conoha-cli/cmd/proxy"
+	"github.com/crowdy/conoha-cli/internal/api"
+	"github.com/crowdy/conoha-cli/internal/config"
+	"github.com/crowdy/conoha-cli/internal/model"
+	proxypkg "github.com/crowdy/conoha-cli/internal/proxy"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
 func init() {
 	addAppFlags(initCmd)
+	initCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
 }
 
 var initCmd = &cobra.Command{
-	Use:   "init <id|name>",
-	Short: "Initialize app deployment on a server",
-	Long:  "Install Docker, create git bare repo with post-receive hook for git-push deploys.",
-	Args:  cobra.ExactArgs(1),
+	Use:   "init <server>",
+	Short: "Register the app's conoha.yml with conoha-proxy on the server",
+	Long: `Read conoha.yml from the current directory, verify the server has Docker
+and a running conoha-proxy, and upsert the service (name, hosts, health policy)
+against the proxy's Admin API.
+
+Run 'conoha proxy boot' on the server first.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx, err := connectToApp(cmd, args)
+		pf, err := config.LoadProjectFile(config.ProjectFileName)
 		if err != nil {
 			return err
 		}
-		defer func() { _ = ctx.Client.Close() }()
+		if err := pf.Validate(); err != nil {
+			return err
+		}
 
-		fmt.Fprintf(os.Stderr, "Initializing app %q on %s (%s)...\n", ctx.AppName, ctx.Server.Name, ctx.IP)
-
-		script := generateInitScript(ctx.AppName)
-		exitCode, err := internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
+		sshClient, s, ip, err := connectToServer(cmd, args[0])
 		if err != nil {
-			return fmt.Errorf("init failed: %w", err)
+			return err
 		}
-		if exitCode != 0 {
-			return fmt.Errorf("init script exited with code %d", exitCode)
+		defer func() { _ = sshClient.Close() }()
+
+		dataDir, _ := cmd.Flags().GetString("data-dir")
+		client := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
+
+		if err := warnOnLegacyRepo(sshClient, pf.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 		}
 
-		fmt.Fprintf(os.Stderr, "\nApp %q initialized on %s (%s).\n\n", ctx.AppName, ctx.Server.Name, ctx.IP)
-		fmt.Fprintf(os.Stderr, "Add the remote and deploy:\n")
-		fmt.Fprintf(os.Stderr, "  git remote add conoha %s@%s:/opt/conoha/%s.git\n", ctx.User, ctx.IP, ctx.AppName)
-		fmt.Fprintf(os.Stderr, "  git push conoha main\n")
-
+		fmt.Fprintf(os.Stderr, "==> Registering service %q on %s (%s)\n", pf.Name, s.Name, ip)
+		svc, err := client.Upsert(proxypkg.UpsertRequest{
+			Name:         pf.Name,
+			Hosts:        pf.Hosts,
+			HealthPolicy: mapHealth(pf.Health),
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Service %q registered. phase=%s tls=%s\n", svc.Name, svc.Phase, svc.TLSStatus)
+		fmt.Fprintf(os.Stderr, "Next: run 'conoha app deploy %s' to push your app.\n", args[0])
 		return nil
 	},
 }
 
-func generateInitScript(appName string) []byte {
-	return []byte(fmt.Sprintf(`#!/bin/bash
-set -euo pipefail
-
-echo "==> Installing Docker..."
-if ! command -v docker &>/dev/null; then
-    curl -fsSL https://get.docker.com | sh
-fi
-
-echo "==> Installing Docker Compose plugin..."
-if ! docker compose version &>/dev/null; then
-    apt-get update -qq && apt-get install -y -qq docker-compose-plugin
-fi
-
-echo "==> Installing git..."
-if ! command -v git &>/dev/null; then
-    apt-get update -qq && apt-get install -y -qq git
-fi
-
-APP_NAME="%s"
-REPO_DIR="/opt/conoha/${APP_NAME}.git"
-WORK_DIR="/opt/conoha/${APP_NAME}"
-
-echo "==> Creating directories..."
-mkdir -p "$WORK_DIR"
-
-if [ -d "$REPO_DIR" ]; then
-    echo "Git repo already exists at $REPO_DIR, skipping."
-else
-    git init --bare "$REPO_DIR"
-fi
-
-echo "==> Installing post-receive hook..."
-cat > "$REPO_DIR/hooks/post-receive" << 'HOOK'
-#!/bin/bash
-set -euo pipefail
-
-APP_NAME="%s"
-WORK_DIR="/opt/conoha/${APP_NAME}"
-DEPLOY_BRANCH="main"
-
-# Read pushed refs from stdin; only deploy on main branch push
-while read -r oldrev newrev refname; do
-    branch=$(basename "$refname")
-    if [ "$branch" != "$DEPLOY_BRANCH" ]; then
-        echo "Pushed to $branch — skipping deploy (only $DEPLOY_BRANCH triggers deploy)."
-        continue
-    fi
-
-    echo "==> Checking out $DEPLOY_BRANCH..."
-    GIT_DIR="$(dirname "$0")/.."
-    git --work-tree="$WORK_DIR" --git-dir="$GIT_DIR" checkout -f "$DEPLOY_BRANCH"
-
-    cd "$WORK_DIR"
-
-    COMPOSE_FILE=""
-    if [ -f conoha-docker-compose.yml ]; then
-        COMPOSE_FILE=conoha-docker-compose.yml
-    elif [ -f conoha-docker-compose.yaml ]; then
-        COMPOSE_FILE=conoha-docker-compose.yaml
-    elif [ -f docker-compose.yml ]; then
-        COMPOSE_FILE=docker-compose.yml
-    elif [ -f docker-compose.yaml ]; then
-        COMPOSE_FILE=docker-compose.yaml
-    elif [ -f compose.yml ]; then
-        COMPOSE_FILE=compose.yml
-    elif [ -f compose.yaml ]; then
-        COMPOSE_FILE=compose.yaml
-    fi
-
-    if [ -n "$COMPOSE_FILE" ]; then
-        echo "==> Building and starting containers with $COMPOSE_FILE..."
-        docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
-        echo "==> Deploy complete!"
-        docker compose -f "$COMPOSE_FILE" ps
-    else
-        echo "Warning: No compose file found in $WORK_DIR"
-        echo "Push a docker-compose.yml to enable auto-deploy."
-    fi
-done
-HOOK
-chmod +x "$REPO_DIR/hooks/post-receive"
-
-echo "==> Done!"
-`, appName, appName))
+// connectToServer opens an SSH session to the server identified by id-or-name.
+// Returns the client, the resolved server, and its public IP.
+func connectToServer(cmd *cobra.Command, idOrName string) (*ssh.Client, *model.Server, string, error) {
+	apiClient, err := cmdutil.NewClient(cmd)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	compute := api.NewComputeAPI(apiClient)
+	s, err := compute.FindServer(idOrName)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	ip, err := internalssh.ServerIP(s)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	user, _ := cmd.Flags().GetString("user")
+	port, _ := cmd.Flags().GetString("port")
+	identity, _ := cmd.Flags().GetString("identity")
+	if identity == "" {
+		identity = internalssh.ResolveKeyPath(s.KeyName)
+	}
+	if identity == "" {
+		return nil, nil, "", fmt.Errorf("no SSH key found; specify --identity or ensure ~/.ssh/conoha_<keyname> exists")
+	}
+	cli, err := internalssh.Connect(internalssh.ConnectConfig{
+		Host: ip, Port: port, User: user, KeyPath: identity,
+	})
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("SSH connect: %w", err)
+	}
+	return cli, s, ip, nil
 }
+
+// mapHealth copies project-file health settings into the proxy request shape.
+func mapHealth(h *config.HealthSpec) *proxypkg.HealthPolicy {
+	if h == nil {
+		return nil
+	}
+	return &proxypkg.HealthPolicy{
+		Path:               h.Path,
+		IntervalMs:         h.IntervalMs,
+		TimeoutMs:          h.TimeoutMs,
+		HealthyThreshold:   h.HealthyThreshold,
+		UnhealthyThreshold: h.UnhealthyThreshold,
+	}
+}
+
+// warnOnLegacyRepo checks for the old /opt/conoha/<name>.git bare repo and
+// returns a non-nil (non-fatal) error if present, so users can migrate cleanly.
+func warnOnLegacyRepo(cli *ssh.Client, name string) error {
+	cmdStr := fmt.Sprintf("test -d /opt/conoha/%s.git && echo yes || echo no", name)
+	var buf byteBuf
+	_, err := internalssh.RunCommand(cli, cmdStr, &buf, os.Stderr)
+	if err != nil {
+		return nil
+	}
+	if string(buf.b) == "yes\n" {
+		return fmt.Errorf("legacy git bare repo /opt/conoha/%s.git exists (left untouched). Remove it after migration with 'rm -rf /opt/conoha/%s.git' via SSH", name, name)
+	}
+	return nil
+}
+
+type byteBuf struct{ b []byte }
+
+func (w *byteBuf) Write(p []byte) (int, error) { w.b = append(w.b, p...); return len(p), nil }
