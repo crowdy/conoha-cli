@@ -106,3 +106,12 @@ func buildAccessoryExists(project string) string {
 		`[ "$(docker compose -p %s ps -q | wc -l)" -gt 0 ]`,
 		project)
 }
+
+// buildComposeProjectExists reports via shell exit 0 whether a compose project
+// with the given name is currently known to docker (has any containers, running
+// or stopped). Used to detect slot-ID collisions before re-use.
+func buildComposeProjectExists(project string) string {
+	return fmt.Sprintf(
+		`[ -n "$(docker compose -p %s ps -a -q 2>/dev/null)" ]`,
+		project)
+}

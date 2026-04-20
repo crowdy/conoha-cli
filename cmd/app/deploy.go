@@ -63,10 +63,15 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 	slotOverride, _ := cmd.Flags().GetString("slot")
 	slot := slotOverride
 	if slot == "" {
-		slot, err = determineSlotID(".", IsGitRepo("."))
+		base, err := determineSlotID(".", IsGitRepo("."))
 		if err != nil {
 			return err
 		}
+		slot = suffixIfTaken(base, func(candidate string) bool {
+			probe := buildComposeProjectExists(slotProjectName(pf.Name, candidate))
+			code, _ := internalssh.RunCommand(sshClient, probe, os.Stderr, os.Stderr)
+			return code == 0
+		})
 	}
 	if err := ValidateSlotID(slot); err != nil {
 		return err
