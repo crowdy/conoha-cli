@@ -1,8 +1,10 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
@@ -126,17 +128,13 @@ func mapHealth(h *config.HealthSpec) *proxypkg.HealthPolicy {
 // returns a non-nil (non-fatal) error if present, so users can migrate cleanly.
 func warnOnLegacyRepo(cli *ssh.Client, name string) error {
 	cmdStr := fmt.Sprintf("test -d /opt/conoha/%s.git && echo yes || echo no", name)
-	var buf byteBuf
+	var buf bytes.Buffer
 	_, err := internalssh.RunCommand(cli, cmdStr, &buf, os.Stderr)
 	if err != nil {
 		return nil
 	}
-	if string(buf.b) == "yes\n" {
+	if strings.TrimSpace(buf.String()) == "yes" {
 		return fmt.Errorf("legacy git bare repo /opt/conoha/%s.git exists (left untouched). Remove it after migration with 'rm -rf /opt/conoha/%s.git' via SSH", name, name)
 	}
 	return nil
 }
-
-type byteBuf struct{ b []byte }
-
-func (w *byteBuf) Write(p []byte) (int, error) { w.b = append(w.b, p...); return len(p), nil }
