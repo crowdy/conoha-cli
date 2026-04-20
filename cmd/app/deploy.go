@@ -18,7 +18,7 @@ import (
 func init() {
 	addAppFlags(deployCmd)
 	deployCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
-	deployCmd.Flags().String("slot", "", "override slot ID (default: git short SHA or timestamp)")
+	deployCmd.Flags().String("slot", "", "override slot ID (default: git short SHA or timestamp). Must match [a-z0-9][a-z0-9-]{0,63}. Reusing an existing slot removes its work dir before re-extracting; pending drain-teardowns for the same slot will auto-skip")
 }
 
 var deployCmd = &cobra.Command{

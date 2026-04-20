@@ -131,7 +131,7 @@ drain 窓（既定 30 秒）の内であれば即時：
 conoha app rollback my-app-server
 ```
 
-drain 窓が切れていれば `no_drain_target` エラー。旧バージョンをもう一度 deploy する（`--slot <old-sha>` で同じ slot 名を指定可）。
+drain 窓が切れていれば `no_drain_target` エラー。旧バージョンをもう一度 deploy する（`--slot <old-sha>` で同じ slot 名を指定可）。同じ slot ID を再利用する際は既存の作業ディレクトリが `rm -rf` されるため、直前の deploy から `drain_ms` 経過前でも安全（teardown スクリプトは実行直前に `CURRENT_SLOT` を再確認し、該当 slot が再 active 化されていれば自動的にスキップする）。
 
 ## proxy の運用
 

@@ -333,7 +333,7 @@ Deploy complete.
 4. `conoha app init <server>` (新しい init は proxy に service を登録する)。
 5. `conoha app deploy <server>`
 
-旧 `/opt/conoha/<app>.git` repo と post-receive フックは新 `init` が検出した場合、**警告のみ** 出して触らない。完全削除は別途 `conoha app reset` で。
+旧 `/opt/conoha/<app>.git` repo と post-receive フックは新 `init` が検出した場合、**警告のみ** 出して触らない。完全削除はユーザーが手動で `ssh <user>@<server> rm -rf /opt/conoha/<app>.git /opt/conoha/<app>.env.server` する。`conoha app reset` は本リファクタで一旦廃止 (issue #92 で再実装予定)。
 
 ## 12. 実装順序 (plan で詳細化)
 
