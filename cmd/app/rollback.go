@@ -48,7 +48,11 @@ var rollbackCmd = &cobra.Command{
 			}
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Rollback complete. active=%s phase=%s\n", updated.ActiveTarget.URL, updated.Phase)
+		active := "<unknown>"
+		if updated.ActiveTarget != nil {
+			active = updated.ActiveTarget.URL
+		}
+		fmt.Fprintf(os.Stderr, "Rollback complete. active=%s phase=%s\n", active, updated.Phase)
 		return nil
 	},
 }

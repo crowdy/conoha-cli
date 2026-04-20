@@ -173,7 +173,11 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Deploy complete. active=%s phase=%s\n", updated.ActiveTarget.URL, updated.Phase)
+	active := "<unknown>"
+	if updated.ActiveTarget != nil {
+		active = updated.ActiveTarget.URL
+	}
+	fmt.Fprintf(os.Stderr, "Deploy complete. active=%s phase=%s\n", active, updated.Phase)
 	return nil
 }
 
