@@ -45,6 +45,9 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 	if err != nil {
 		return err
 	}
+	if err := pf.ValidateAgainstCompose(composeFile); err != nil {
+		return err
+	}
 
 	sshClient, s, ip, err := connectToServer(cmd, serverID)
 	if err != nil {

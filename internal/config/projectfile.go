@@ -128,3 +128,41 @@ func filepathJoin(dir, name string) string {
 	}
 	return dir + string(os.PathSeparator) + name
 }
+
+// composeFileShape is the subset of a docker-compose YAML we need for cross-validation.
+type composeFileShape struct {
+	Services map[string]interface{} `yaml:"services"`
+}
+
+// ValidateAgainstCompose reads the resolved compose file and verifies that
+//   - web.service exists as a service
+//   - every accessory exists as a service
+//
+// It returns a single error describing the first failure, if any.
+func (p *ProjectFile) ValidateAgainstCompose(composePath string) error {
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		return fmt.Errorf("read compose %s: %w", composePath, err)
+	}
+	var c composeFileShape
+	if err := yaml.Unmarshal(data, &c); err != nil {
+		return fmt.Errorf("parse compose %s: %w", composePath, err)
+	}
+	if _, ok := c.Services[p.Web.Service]; !ok {
+		return fmt.Errorf("web.service %q not found in %s (available: %v)", p.Web.Service, composePath, composeServiceKeys(c.Services))
+	}
+	for _, a := range p.Accessories {
+		if _, ok := c.Services[a]; !ok {
+			return fmt.Errorf("accessory %q not found in %s (available: %v)", a, composePath, composeServiceKeys(c.Services))
+		}
+	}
+	return nil
+}
+
+func composeServiceKeys(m map[string]interface{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}

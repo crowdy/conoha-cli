@@ -166,3 +166,40 @@ func TestResolveComposeFile(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestValidateAgainstCompose(t *testing.T) {
+	dir := t.TempDir()
+	compose := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(compose, []byte("services:\n  web:\n    image: nginx\n  db:\n    image: postgres\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &ProjectFile{
+		Name:  "myapp",
+		Hosts: []string{"a.example.com"},
+		Web:   WebSpec{Service: "web", Port: 80},
+	}
+	if err := p.ValidateAgainstCompose(compose); err != nil {
+		t.Errorf("ok case: %v", err)
+	}
+
+	p.Accessories = []string{"db"}
+	if err := p.ValidateAgainstCompose(compose); err != nil {
+		t.Errorf("db accessory: %v", err)
+	}
+
+	p.Web.Service = "nonexistent"
+	if err := p.ValidateAgainstCompose(compose); err == nil {
+		t.Error("missing web.service should fail")
+	}
+
+	p.Web.Service = "web"
+	p.Accessories = []string{"cache"}
+	if err := p.ValidateAgainstCompose(compose); err == nil {
+		t.Error("missing accessory should fail")
+	}
+
+	if err := p.ValidateAgainstCompose(filepath.Join(dir, "nope.yml")); err == nil {
+		t.Error("missing file should fail")
+	}
+}

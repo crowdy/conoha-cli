@@ -38,6 +38,13 @@ Run 'conoha proxy boot' on the server first.`,
 		if err := pf.Validate(); err != nil {
 			return err
 		}
+		composePath, err := pf.ResolveComposeFile(".")
+		if err != nil {
+			return err
+		}
+		if err := pf.ValidateAgainstCompose(composePath); err != nil {
+			return err
+		}
 
 		sshClient, s, ip, err := connectToServer(cmd, args[0])
 		if err != nil {
