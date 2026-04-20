@@ -4,171 +4,190 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
-	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh"
 
-	clerrors "github.com/crowdy/conoha-cli/internal/errors"
+	"github.com/crowdy/conoha-cli/cmd/proxy"
+	"github.com/crowdy/conoha-cli/internal/config"
+	proxypkg "github.com/crowdy/conoha-cli/internal/proxy"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
 func init() {
 	addAppFlags(deployCmd)
-	deployCmd.Flags().StringP("compose-file", "f", "", "compose file path (auto-detected if not specified)")
+	deployCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
+	deployCmd.Flags().String("slot", "", "override slot ID (default: git short SHA or timestamp)")
 }
 
 var deployCmd = &cobra.Command{
-	Use:   "deploy <id|name>",
-	Short: "Deploy current directory to a server",
-	Long:  "Archive current directory, upload via SSH, and run docker compose up.",
-	Args:  cobra.ExactArgs(1),
+	Use:   "deploy <server>",
+	Short: "Deploy the current directory via conoha-proxy blue/green",
+	Long: `Archive the current directory, upload via SSH, start the web container
+in a new compose slot on a dynamic port, then ask conoha-proxy to probe and
+swap. The previous slot is torn down after the drain window.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx, err := connectToApp(cmd, args)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = ctx.Client.Close() }()
-		return deployApp(ctx)
+		return runDeploy(cmd, args[0])
 	},
 }
 
-// composeFileRegex allows alphanumeric, hyphens, dots, underscores, and path separators.
-var composeFileRegex = regexp.MustCompile(`^[a-zA-Z0-9/][a-zA-Z0-9._/-]*$`)
-
-// validateComposeFilePath checks that the path contains only safe characters.
-func validateComposeFilePath(path string) error {
-	if !composeFileRegex.MatchString(path) {
-		return &clerrors.ValidationError{
-			Field:   "compose-file",
-			Message: fmt.Sprintf("invalid compose file path %q: must contain only alphanumeric, hyphens, dots, underscores, and slashes", path),
-		}
-	}
-	return nil
-}
-
-// resolveComposeFile returns the compose file to use.
-// If explicit is non-empty, it validates that the file exists.
-// Otherwise it auto-detects using the priority order.
-func resolveComposeFile(explicit string) (string, error) {
-	if explicit != "" {
-		if err := validateComposeFilePath(explicit); err != nil {
-			return "", err
-		}
-		if _, err := os.Stat(explicit); err != nil {
-			return "", &clerrors.ValidationError{
-				Field:   "compose-file",
-				Message: fmt.Sprintf("compose file not found: %s", explicit),
-			}
-		}
-		return explicit, nil
-	}
-	return detectComposeFile(".")
-}
-
-func deployApp(ctx *appContext) error {
-	// Resolve compose file
-	composeFile, err := resolveComposeFile(ctx.ComposeFile)
+func runDeploy(cmd *cobra.Command, serverID string) error {
+	pf, err := config.LoadProjectFile(config.ProjectFileName)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Using compose file: %s\n", composeFile)
+	if err := pf.Validate(); err != nil {
+		return err
+	}
+	composeFile, err := pf.ResolveComposeFile(".")
+	if err != nil {
+		return err
+	}
 
-	// Load .dockerignore
+	sshClient, s, ip, err := connectToServer(cmd, serverID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sshClient.Close() }()
+
+	dataDir, _ := cmd.Flags().GetString("data-dir")
+	admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
+
+	// Service must exist — init registers it. Missing = user skipped init.
+	if _, err := admin.Get(pf.Name); err != nil {
+		return fmt.Errorf("service %q not found on proxy — run 'conoha app init %s' first: %w", pf.Name, serverID, err)
+	}
+
+	slotOverride, _ := cmd.Flags().GetString("slot")
+	slot := slotOverride
+	if slot == "" {
+		slot, err = determineSlotID(".", IsGitRepo("."))
+		if err != nil {
+			return err
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "==> Deploying %q to %s (%s)\n", pf.Name, s.Name, ip)
+	fmt.Fprintf(os.Stderr, "==> Slot: %s (compose project: %s)\n", slot, slotProjectName(pf.Name, slot))
+
+	// Upload archive to slot work dir.
 	patterns, err := loadIgnorePatterns(".")
 	if err != nil {
 		return err
 	}
-
-	// Create tar.gz
-	fmt.Fprintf(os.Stderr, "Archiving current directory...\n")
 	var buf bytes.Buffer
 	if err := createTarGz(".", patterns, &buf); err != nil {
 		return fmt.Errorf("create archive: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Uploading to %s (%s)...\n", ctx.Server.Name, ctx.IP)
+	slotWork := fmt.Sprintf("/opt/conoha/%s/%s", pf.Name, slot)
+	if err := runRemote(sshClient, buildSlotUploadCmd(slotWork, ""), &buf); err != nil {
+		return fmt.Errorf("upload: %w", err)
+	}
 
-	// Upload: backup existing .env, clean-extract archive, then restore .env from
-	// .env.server (if present in archive) or from the backup.
-	workDir := "/opt/conoha/" + ctx.AppName
-	uploadCmd := buildUploadCmd(workDir)
-	exitCode, err := internalssh.RunWithStdin(ctx.Client, uploadCmd, &buf, os.Stdout, os.Stderr)
+	// Write compose override into the slot dir.
+	overrideContent := composeOverride(pf.Name, slot, pf.Web.Service, pf.Web.Port)
+	overridePath := "conoha-override.yml"
+	writeOverride := fmt.Sprintf("cat > '%s/%s' <<'EOF'\n%sEOF", slotWork, overridePath, overrideContent)
+	if err := runRemote(sshClient, writeOverride, nil); err != nil {
+		return fmt.Errorf("write override: %w", err)
+	}
+
+	// First-run: bring up accessories (idempotent via existence probe).
+	if len(pf.Accessories) > 0 {
+		check := buildAccessoryExists(accessoryProjectName(pf.Name))
+		code, _ := internalssh.RunCommand(sshClient, check, os.Stderr, os.Stderr)
+		if code != 0 {
+			fmt.Fprintf(os.Stderr, "==> Starting accessories: %v\n", pf.Accessories)
+			if err := runRemote(sshClient, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), composeFile, pf.Accessories), nil); err != nil {
+				return fmt.Errorf("accessory up: %w", err)
+			}
+		}
+	}
+
+	// Start the new slot's web service.
+	fmt.Fprintf(os.Stderr, "==> Building and starting %s in new slot\n", pf.Web.Service)
+	if err := runRemote(sshClient, buildSlotComposeUp(slotWork, slotProjectName(pf.Name, slot), composeFile, overridePath, pf.Web.Service), nil); err != nil {
+		return fmt.Errorf("compose up (slot): %w", err)
+	}
+
+	// Discover kernel-picked host port.
+	containerName := fmt.Sprintf("%s-%s-%s", pf.Name, slot, pf.Web.Service)
+	var portOut bytes.Buffer
+	if _, err := internalssh.RunCommand(sshClient, buildDockerPortCmd(containerName, pf.Web.Port), &portOut, os.Stderr); err != nil {
+		tearDownSlot(sshClient, pf.Name, slot)
+		return fmt.Errorf("docker port: %w", err)
+	}
+	hostPort, err := extractHostPort(portOut.String())
 	if err != nil {
-		return fmt.Errorf("upload failed: %w", err)
+		tearDownSlot(sshClient, pf.Name, slot)
+		return err
 	}
-	if exitCode != 0 {
-		return fmt.Errorf("upload exited with code %d", exitCode)
+	targetURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+	fmt.Fprintf(os.Stderr, "==> Host port: %d. Calling proxy /deploy\n", hostPort)
+
+	drainMs := 30000
+	if pf.Deploy != nil && pf.Deploy.DrainMs > 0 {
+		drainMs = pf.Deploy.DrainMs
 	}
 
-	// Run docker compose (passes --env-file when .env exists for build-time vars)
-	fmt.Fprintf(os.Stderr, "Building and starting containers...\n")
-	composeCmd := buildComposeCmd(workDir, composeFile)
-	exitCode, err = internalssh.RunCommand(ctx.Client, composeCmd, os.Stdout, os.Stderr)
+	// Call proxy /deploy. On 424 the proxy did not mutate state — tear down new slot.
+	updated, err := admin.Deploy(pf.Name, proxypkg.DeployRequest{TargetURL: targetURL, DrainMs: drainMs})
 	if err != nil {
-		return fmt.Errorf("deploy failed: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("deploy exited with code %d", exitCode)
+		tearDownSlot(sshClient, pf.Name, slot)
+		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "Deploy complete.\n")
+	// Read old slot pointer (empty on first deploy), then update to current.
+	ptrPath := fmt.Sprintf("/opt/conoha/%s/CURRENT_SLOT", pf.Name)
+	var ptrBuf bytes.Buffer
+	_, _ = internalssh.RunCommand(sshClient, fmt.Sprintf("cat '%s' 2>/dev/null || true", ptrPath), &ptrBuf, os.Stderr)
+	oldSlot := strings.TrimSpace(ptrBuf.String())
+
+	if err := runRemote(sshClient, fmt.Sprintf("echo %s > '%s'", slot, ptrPath), nil); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: update CURRENT_SLOT pointer: %v\n", err)
+	}
+
+	if oldSlot != "" && oldSlot != slot {
+		oldWork := fmt.Sprintf("/opt/conoha/%s/%s", pf.Name, oldSlot)
+		schedule := buildScheduleDrainCmd(oldWork, slotProjectName(pf.Name, oldSlot), drainMs)
+		if err := runRemote(sshClient, schedule, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: schedule drain teardown: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "==> Scheduled teardown of old slot %q in %dms\n", oldSlot, drainMs)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Deploy complete. active=%s phase=%s\n", updated.ActiveTarget.URL, updated.Phase)
 	return nil
 }
 
-// buildUploadCmd generates the shell command that uploads the tar archive.
-// It preserves any pre-existing .env on the server:
-//   - If the new archive contains .env.server, it is copied to .env (fixes #81).
-//   - Otherwise the pre-existing .env is restored from a backup (fixes #85).
-//
-// ENV_EXISTS is used as a boolean sentinel (not content check) so that an empty
-// .env file is still preserved after redeploy.
-func buildUploadCmd(workDir string) string {
-	return fmt.Sprintf(
-		"ENV_EXISTS=0; [ -f '%[1]s/.env' ] && ENV_EXISTS=1 || true; "+
-			"ENV_BACKUP=$([ -f '%[1]s/.env' ] && cat '%[1]s/.env' || true) && "+
-			"rm -rf '%[1]s' && mkdir -p '%[1]s' && tar xzf - -C '%[1]s' && "+
-			"{ if [ -f '%[1]s/.env.server' ]; then "+
-			"cp '%[1]s/.env.server' '%[1]s/.env'; "+
-			"elif [ \"$ENV_EXISTS\" = \"1\" ]; then "+
-			"printf '%%s' \"$ENV_BACKUP\" > '%[1]s/.env'; "+
-			"fi; }",
-		workDir)
-}
-
-// buildComposeCmd generates the shell command that runs docker compose.
-// When .env exists, --env-file is passed so variables are substituted in
-// compose.yml including build.args, making them available at Docker build time (#82).
-func buildComposeCmd(workDir, composeFile string) string {
-	return fmt.Sprintf(
-		"cd '%[1]s' && "+
-			"{ if [ -f .env ]; then "+
-			"docker compose --env-file .env -f '%[2]s' up -d --build --remove-orphans; "+
-			"else "+
-			"docker compose -f '%[2]s' up -d --build --remove-orphans; "+
-			"fi; } && "+
-			"docker compose -f '%[2]s' ps",
-		workDir, composeFile)
-}
-
-// composeFileNames lists compose files in detection priority order.
-var composeFileNames = []string{
-	"conoha-docker-compose.yml",
-	"conoha-docker-compose.yaml",
-	"docker-compose.yml",
-	"docker-compose.yaml",
-	"compose.yml",
-	"compose.yaml",
-}
-
-// detectComposeFile returns the first compose file found in dir.
-func detectComposeFile(dir string) (string, error) {
-	for _, name := range composeFileNames {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-			return name, nil
-		}
+// runRemote runs command on cli. When stdinData is non-nil it is streamed as stdin.
+// Returns an error if the remote exit status is not zero.
+func runRemote(cli *ssh.Client, command string, stdinData *bytes.Buffer) error {
+	var code int
+	var err error
+	if stdinData != nil {
+		code, err = internalssh.RunWithStdin(cli, command, stdinData, os.Stdout, os.Stderr)
+	} else {
+		code, err = internalssh.RunCommand(cli, command, os.Stdout, os.Stderr)
 	}
-	return "", &clerrors.ValidationError{
-		Field:   "compose-file",
-		Message: "no compose file found in current directory (checked conoha-docker-compose.yml/yaml, docker-compose.yml/yaml, compose.yml/yaml)",
+	if err != nil {
+		return err
 	}
+	if code != 0 {
+		return fmt.Errorf("remote exit %d", code)
+	}
+	return nil
+}
+
+// tearDownSlot brings down a slot's compose project and removes its work dir.
+// Best-effort; the caller already has a more interesting error to return.
+func tearDownSlot(cli *ssh.Client, app, slot string) {
+	work := fmt.Sprintf("/opt/conoha/%s/%s", app, slot)
+	cmd := fmt.Sprintf(
+		"docker compose -p %s -f '%s/conoha-override.yml' down 2>/dev/null || true; rm -rf '%s' || true",
+		slotProjectName(app, slot), work, work)
+	_, _ = internalssh.RunCommand(cli, cmd, os.Stderr, os.Stderr)
 }
