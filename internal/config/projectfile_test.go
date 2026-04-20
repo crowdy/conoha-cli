@@ -86,3 +86,83 @@ func TestLoadProjectFile_InvalidYAML(t *testing.T) {
 		t.Fatal("want error for invalid YAML")
 	}
 }
+
+func TestProjectFile_Validate(t *testing.T) {
+	good := ProjectFile{
+		Name:  "myapp",
+		Hosts: []string{"app.example.com"},
+		Web:   WebSpec{Service: "web", Port: 8080},
+	}
+	if err := good.Validate(); err != nil {
+		t.Errorf("good Validate: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		mod  func(*ProjectFile)
+		want string // substring of error
+	}{
+		{"empty name", func(p *ProjectFile) { p.Name = "" }, "name"},
+		{"bad name", func(p *ProjectFile) { p.Name = "My-App_1" }, "name"},
+		{"too long name", func(p *ProjectFile) { p.Name = "a" + string(make([]byte, 63)) }, "name"},
+		{"no hosts", func(p *ProjectFile) { p.Hosts = nil }, "hosts"},
+		{"empty host", func(p *ProjectFile) { p.Hosts = []string{""} }, "hosts"},
+		{"dup hosts", func(p *ProjectFile) { p.Hosts = []string{"a.com", "a.com"} }, "duplicate"},
+		{"no web service", func(p *ProjectFile) { p.Web.Service = "" }, "web.service"},
+		{"no port", func(p *ProjectFile) { p.Web.Port = 0 }, "web.port"},
+		{"bad port high", func(p *ProjectFile) { p.Web.Port = 70000 }, "web.port"},
+		{"accessory = web", func(p *ProjectFile) { p.Accessories = []string{"web"} }, "accessor"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := good
+			tc.mod(&p)
+			err := p.Validate()
+			if err == nil {
+				t.Fatalf("want error containing %q, got nil", tc.want)
+			}
+			if !contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want substring %q", err.Error(), tc.want)
+			}
+		})
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+func TestResolveComposeFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "compose.yml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := &ProjectFile{}
+	got, err := p.ResolveComposeFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "compose.yml" {
+		t.Errorf("got %q, want compose.yml", got)
+	}
+
+	p.ComposeFile = "custom.yml"
+	if _, err := p.ResolveComposeFile(dir); err == nil {
+		t.Error("want error for missing compose_file")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "custom.yml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err = p.ResolveComposeFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "custom.yml" {
+		t.Errorf("got %q", got)
+	}
+}

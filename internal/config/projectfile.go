@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,4 +53,78 @@ func LoadProjectFile(path string) (*ProjectFile, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &pf, nil
+}
+
+var dnsLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// Validate enforces the schema rules documented in the spec.
+func (p *ProjectFile) Validate() error {
+	if p.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if len(p.Name) > 63 || !dnsLabelRe.MatchString(p.Name) {
+		return fmt.Errorf("name %q is not a valid DNS-1123 label (lowercase alphanumerics and hyphens, 1-63 chars)", p.Name)
+	}
+	if len(p.Hosts) == 0 {
+		return fmt.Errorf("hosts must list at least one FQDN")
+	}
+	seen := make(map[string]struct{}, len(p.Hosts))
+	for _, h := range p.Hosts {
+		if h == "" {
+			return fmt.Errorf("hosts contains empty entry")
+		}
+		if _, dup := seen[h]; dup {
+			return fmt.Errorf("hosts contains duplicate %q", h)
+		}
+		seen[h] = struct{}{}
+	}
+	if p.Web.Service == "" {
+		return fmt.Errorf("web.service is required")
+	}
+	if p.Web.Port < 1 || p.Web.Port > 65535 {
+		return fmt.Errorf("web.port must be between 1 and 65535, got %d", p.Web.Port)
+	}
+	for _, a := range p.Accessories {
+		if a == p.Web.Service {
+			return fmt.Errorf("accessory %q conflicts with web.service", a)
+		}
+	}
+	return nil
+}
+
+// ComposeFileCandidates is the auto-detect order when compose_file is unset.
+// Mirrors cmd/app/deploy.go composeFileNames as of the conoha-proxy refactor.
+var ComposeFileCandidates = []string{
+	"conoha-docker-compose.yml",
+	"conoha-docker-compose.yaml",
+	"docker-compose.yml",
+	"docker-compose.yaml",
+	"compose.yml",
+	"compose.yaml",
+}
+
+// ResolveComposeFile returns the compose file path relative to dir.
+// If the project file specified compose_file explicitly it is returned (existence is verified).
+// Otherwise the first existing candidate from ComposeFileCandidates is returned.
+func (p *ProjectFile) ResolveComposeFile(dir string) (string, error) {
+	if p.ComposeFile != "" {
+		full := p.ComposeFile
+		if _, err := os.Stat(filepathJoin(dir, full)); err != nil {
+			return "", fmt.Errorf("compose_file %q not found", full)
+		}
+		return full, nil
+	}
+	for _, name := range ComposeFileCandidates {
+		if _, err := os.Stat(filepathJoin(dir, name)); err == nil {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("no compose file found (tried %v)", ComposeFileCandidates)
+}
+
+func filepathJoin(dir, name string) string {
+	if dir == "" || dir == "." {
+		return name
+	}
+	return dir + string(os.PathSeparator) + name
 }
