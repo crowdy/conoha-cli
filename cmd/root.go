@@ -17,6 +17,7 @@ import (
 	"github.com/crowdy/conoha-cli/cmd/keypair"
 	"github.com/crowdy/conoha-cli/cmd/lb"
 	"github.com/crowdy/conoha-cli/cmd/network"
+	"github.com/crowdy/conoha-cli/cmd/proxy"
 	"github.com/crowdy/conoha-cli/cmd/server"
 	"github.com/crowdy/conoha-cli/cmd/skill"
 	"github.com/crowdy/conoha-cli/cmd/storage"
@@ -96,6 +97,7 @@ func init() {
 	rootCmd.AddCommand(storage.Cmd)
 	rootCmd.AddCommand(identity.Cmd)
 	rootCmd.AddCommand(app.Cmd)
+	rootCmd.AddCommand(proxy.Cmd)
 	rootCmd.AddCommand(skill.Cmd)
 }
 
