@@ -87,7 +87,7 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 	}
 
 	// Write compose override into the slot dir.
-	overrideContent := composeOverride(pf.Name, slot, pf.Web.Service, pf.Web.Port)
+	overrideContent := composeOverride(pf.Name, slot, pf.Web.Service, pf.Web.Port, len(pf.Accessories) > 0)
 	overridePath := "conoha-override.yml"
 	writeOverride := fmt.Sprintf("cat > '%s/%s' <<'EOF'\n%sEOF", slotWork, overridePath, overrideContent)
 	if err := runRemote(sshClient, writeOverride, nil); err != nil {
