@@ -60,14 +60,33 @@ func parseColonPort(line string) (int, error) {
 // buildScheduleDrainCmd fires a detached shell that, after drainMs, brings the
 // old slot down with `docker compose down`. Uses nohup + background shell;
 // does not rely on `at` availability.
-func buildScheduleDrainCmd(workDir, project string, drainMs int) string {
+//
+// Before actually running `down`, the drainer re-reads /opt/conoha/<app>/CURRENT_SLOT
+// and SKIPS teardown if the pointer now names this slot. This guards against the
+// redeploy-same-slot rollback race (review C4): if a user runs `conoha app deploy
+// --slot <this>` inside the drain window to recover, we must not tear down the
+// now-active slot.
+//
+// WARNING: caller must have validated `slot` and `app` via ValidateSlotID /
+// dnsLabelRe before passing them here — they land inside a single-quoted shell
+// context and a bare $-expansion for the CURRENT_SLOT read.
+func buildScheduleDrainCmd(workDir, project, app, slot string, drainMs int) string {
 	seconds := drainMs / 1000
 	if seconds < 1 {
 		seconds = 1
 	}
-	return fmt.Sprintf(
-		`nohup bash -c "sleep %d && cd '%s' && docker compose -p %s down" >/dev/null 2>&1 & disown`,
-		seconds, workDir, project)
+	ptrPath := fmt.Sprintf("/opt/conoha/%s/CURRENT_SLOT", app)
+	script := fmt.Sprintf(
+		`sleep %d; `+
+			`cur=$(cat '%s' 2>/dev/null || true); `+
+			`if [ "$cur" = '%s' ]; then `+
+			`  echo "skip teardown of %s: still active" >&2; `+
+			`  exit 0; `+
+			`fi; `+
+			`cd '%s' 2>/dev/null || exit 0; `+
+			`docker compose -p %s down`,
+		seconds, ptrPath, slot, slot, workDir, project)
+	return fmt.Sprintf(`nohup bash -c "%s" >/dev/null 2>&1 & disown`, script)
 }
 
 // buildAccessoryUp starts the accessories listed, using a dedicated compose

@@ -64,18 +64,20 @@ func TestExtractHostPort(t *testing.T) {
 }
 
 func TestBuildScheduleDrainCmd(t *testing.T) {
-	got := buildScheduleDrainCmd("/opt/conoha/myapp/old", "myapp-old", 30000)
-	if !strings.Contains(got, "sleep 30") {
-		t.Errorf("expected sleep 30s, got %s", got)
-	}
-	if !strings.Contains(got, "docker compose -p myapp-old") {
-		t.Errorf("missing project in %s", got)
-	}
-	if !strings.Contains(got, "down") {
-		t.Errorf("missing down in %s", got)
-	}
-	if !strings.Contains(got, "nohup") {
-		t.Errorf("expected nohup in %s", got)
+	got := buildScheduleDrainCmd("/opt/conoha/myapp/old", "myapp-old", "myapp", "old", 30000)
+	for _, want := range []string{
+		"sleep 30",
+		"docker compose -p myapp-old",
+		"down",
+		"nohup",
+		// re-read guard: must cat CURRENT_SLOT and compare to this slot
+		"cat '/opt/conoha/myapp/CURRENT_SLOT'",
+		`[ "$cur" = 'old' ]`,
+		"skip teardown",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
+		}
 	}
 }
 

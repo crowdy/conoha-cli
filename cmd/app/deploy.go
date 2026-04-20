@@ -160,7 +160,7 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 
 	if oldSlot != "" && oldSlot != slot {
 		oldWork := fmt.Sprintf("/opt/conoha/%s/%s", pf.Name, oldSlot)
-		schedule := buildScheduleDrainCmd(oldWork, slotProjectName(pf.Name, oldSlot), drainMs)
+		schedule := buildScheduleDrainCmd(oldWork, slotProjectName(pf.Name, oldSlot), pf.Name, oldSlot, drainMs)
 		if err := runRemote(sshClient, schedule, nil); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: schedule drain teardown: %v\n", err)
 		} else {
