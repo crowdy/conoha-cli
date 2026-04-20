@@ -1,0 +1,102 @@
+package proxy
+
+import "fmt"
+
+// BootParams bundles the config needed by BootScript / RebootScript.
+type BootParams struct {
+	Email     string // --acme-email value (required)
+	Image     string // docker image reference
+	DataDir   string // host path mounted at /var/lib/conoha-proxy
+	Container string // container name (e.g. "conoha-proxy")
+}
+
+// BootScript installs docker if missing, creates the data volume with the
+// correct ownership, and runs the conoha-proxy container.
+func BootScript(p BootParams) []byte {
+	return []byte(fmt.Sprintf(`#!/bin/bash
+set -euo pipefail
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo "==> Installing Docker..."
+    curl -fsSL https://get.docker.com | sh
+fi
+
+echo "==> Preparing data directory %[3]s"
+mkdir -p %[3]s
+chown 65532:65532 %[3]s
+
+if docker inspect %[4]s >/dev/null 2>&1; then
+    echo "Container %[4]s already exists. Use 'conoha proxy reboot' to upgrade."
+    exit 0
+fi
+
+echo "==> Starting %[4]s from %[2]s"
+docker run -d --name %[4]s \
+  --restart unless-stopped \
+  -p 80:80 -p 443:443 \
+  -v %[3]s:%[3]s \
+  %[2]s \
+  run --acme-email=%[1]s
+
+echo "==> Done. Admin socket: %[3]s/admin.sock"
+`, p.Email, p.Image, p.DataDir, p.Container))
+}
+
+// RebootScript pulls the image then replaces the existing container, keeping the volume.
+func RebootScript(p BootParams) []byte {
+	return []byte(fmt.Sprintf(`#!/bin/bash
+set -euo pipefail
+
+echo "==> Pulling %[2]s"
+docker pull %[2]s
+
+if docker inspect %[4]s >/dev/null 2>&1; then
+    echo "==> Stopping %[4]s"
+    docker stop %[4]s >/dev/null
+    docker rm %[4]s >/dev/null
+fi
+
+echo "==> Starting new %[4]s from %[2]s"
+docker run -d --name %[4]s \
+  --restart unless-stopped \
+  -p 80:80 -p 443:443 \
+  -v %[3]s:%[3]s \
+  %[2]s \
+  run --acme-email=%[1]s
+`, p.Email, p.Image, p.DataDir, p.Container))
+}
+
+// StartScript / StopScript / RestartScript are trivial wrappers.
+func StartScript(container string) []byte {
+	return []byte(fmt.Sprintf("#!/bin/bash\nset -e\ndocker start %s\n", container))
+}
+
+func StopScript(container string) []byte {
+	return []byte(fmt.Sprintf("#!/bin/bash\nset -e\ndocker stop %s\n", container))
+}
+
+func RestartScript(container string) []byte {
+	return []byte(fmt.Sprintf("#!/bin/bash\nset -e\ndocker restart %s\n", container))
+}
+
+// RemoveScript removes the container. When purge=true, the host data dir is also deleted.
+func RemoveScript(container, dataDir string, purge bool) []byte {
+	script := fmt.Sprintf("#!/bin/bash\nset -e\ndocker rm -f %s 2>/dev/null || true\n", container)
+	if purge {
+		script += fmt.Sprintf("rm -rf %s\n", dataDir)
+	}
+	return []byte(script)
+}
+
+// LogsScript returns `docker logs` with optional follow/tail flags.
+func LogsScript(container string, follow bool, lines int) []byte {
+	cmd := "docker logs"
+	if follow {
+		cmd += " -f"
+	}
+	if lines > 0 {
+		cmd += fmt.Sprintf(" --tail %d", lines)
+	}
+	cmd += " " + container
+	return []byte("#!/bin/bash\nset -e\n" + cmd + "\n")
+}
