@@ -3,9 +3,25 @@ package app
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// slotIDRe permits lowercase alphanumerics and hyphens, 1-64 chars.
+// Chosen to match git short-SHA (7 hex), timestamps ("YYYYMMDDHHMMSS"),
+// and collision suffixes like "abc1234-2". Strict enough to be safe for
+// inclusion in shell commands and compose project names.
+var slotIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// ValidateSlotID rejects anything that could be unsafe in shell commands
+// or compose project names. Applied to --slot and to CURRENT_SLOT content.
+func ValidateSlotID(slot string) error {
+	if !slotIDRe.MatchString(slot) {
+		return fmt.Errorf("invalid slot ID %q: must match %s", slot, slotIDRe)
+	}
+	return nil
+}
 
 // determineSlotID returns either the repo's 7-char HEAD short SHA (when useGit)
 // or a timestamp "YYYYMMDDHHMMSS" otherwise. useGit=false is used when the caller

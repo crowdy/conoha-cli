@@ -32,6 +32,25 @@ func TestSuffixIfTaken(t *testing.T) {
 	}
 }
 
+func TestValidateSlotID(t *testing.T) {
+	good := []string{"abc1234", "abc1234-2", "20260420123456", "a", "a-b-c"}
+	for _, s := range good {
+		if err := ValidateSlotID(s); err != nil {
+			t.Errorf("ValidateSlotID(%q) should pass: %v", s, err)
+		}
+	}
+	bad := []string{
+		"", "-abc", "ABC", "a b", "a;b", "foo`bar`", "foo$bar",
+		"foo/bar", "../evil",
+		strings.Repeat("a", 65),
+	}
+	for _, s := range bad {
+		if err := ValidateSlotID(s); err == nil {
+			t.Errorf("ValidateSlotID(%q) should fail", s)
+		}
+	}
+}
+
 func TestDetermineSlotID_GitShortSHA(t *testing.T) {
 	// This test runs inside our own repo, so git IS available. If not, skip.
 	id, err := determineSlotID(".", true)

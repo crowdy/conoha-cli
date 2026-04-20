@@ -68,6 +68,9 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 			return err
 		}
 	}
+	if err := ValidateSlotID(slot); err != nil {
+		return err
+	}
 
 	fmt.Fprintf(os.Stderr, "==> Deploying %q to %s (%s)\n", pf.Name, s.Name, ip)
 	fmt.Fprintf(os.Stderr, "==> Slot: %s (compose project: %s)\n", slot, slotProjectName(pf.Name, slot))
@@ -144,9 +147,15 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 	var ptrBuf bytes.Buffer
 	_, _ = internalssh.RunCommand(sshClient, fmt.Sprintf("cat '%s' 2>/dev/null || true", ptrPath), &ptrBuf, os.Stderr)
 	oldSlot := strings.TrimSpace(ptrBuf.String())
+	if oldSlot != "" {
+		if err := ValidateSlotID(oldSlot); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: CURRENT_SLOT contained %q, ignoring: %v\n", oldSlot, err)
+			oldSlot = ""
+		}
+	}
 
-	if err := runRemote(sshClient, fmt.Sprintf("echo %s > '%s'", slot, ptrPath), nil); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: update CURRENT_SLOT pointer: %v\n", err)
+	if err := runRemote(sshClient, fmt.Sprintf("printf %%s '%s' > '%s'", slot, ptrPath), nil); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: update CURRENT_SLOT pointer (MANUAL: write %q to %s): %v\n", slot, ptrPath, err)
 	}
 
 	if oldSlot != "" && oldSlot != slot {
