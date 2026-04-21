@@ -105,12 +105,22 @@ func WriteMarker(cli *ssh.Client, app string, m Mode) error {
 }
 
 // ReadCurrentSlot returns the active slot ID or "" when the file is absent.
+// The returned value is re-validated via ValidateSlotID so a compromised or
+// manually-edited CURRENT_SLOT cannot leak shell metacharacters into downstream
+// 'docker compose -p <app>-<slot>' interpolation.
 func ReadCurrentSlot(cli *ssh.Client, app string) (string, error) {
 	var buf bytes.Buffer
 	if _, err := internalssh.RunCommand(cli, buildReadCurrentSlotCmd(app), &buf, os.Stderr); err != nil {
 		return "", fmt.Errorf("read CURRENT_SLOT: %w", err)
 	}
-	return strings.TrimSpace(buf.String()), nil
+	slot := strings.TrimSpace(buf.String())
+	if slot == "" {
+		return "", nil
+	}
+	if err := ValidateSlotID(slot); err != nil {
+		return "", fmt.Errorf("CURRENT_SLOT: %w", err)
+	}
+	return slot, nil
 }
 
 // flagMode reads --proxy / --no-proxy flags and returns the intended mode, or
