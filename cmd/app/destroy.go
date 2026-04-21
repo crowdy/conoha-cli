@@ -1,24 +1,29 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/crowdy/conoha-cli/cmd/proxy"
+	"github.com/crowdy/conoha-cli/internal/config"
 	"github.com/crowdy/conoha-cli/internal/prompt"
+	proxypkg "github.com/crowdy/conoha-cli/internal/proxy"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
 func init() {
 	addAppFlags(destroyCmd)
 	destroyCmd.Flags().Bool("yes", false, "skip confirmation prompt")
+	destroyCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
 }
 
 var destroyCmd = &cobra.Command{
 	Use:   "destroy <id|name>",
-	Short: "Destroy an app and all its data",
-	Long:  "Stop containers, remove work directory, git repository, and environment file.",
+	Short: "Destroy an app and deregister it from conoha-proxy",
+	Long:  "Stop every slot's containers, remove the app work directory, remove accessories, and deregister the service from conoha-proxy.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, err := connectToApp(cmd, args)
@@ -48,6 +53,21 @@ var destroyCmd = &cobra.Command{
 			return fmt.Errorf("destroy exited with code %d", exitCode)
 		}
 
+		// Best-effort: deregister from proxy if conoha.yml is present.
+		dataDir, _ := cmd.Flags().GetString("data-dir")
+		if dataDir == "" {
+			dataDir = proxy.DefaultDataDir
+		}
+		admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: ctx.Client}, proxy.SocketPath(dataDir))
+		pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
+		if pfErr == nil && pf.Validate() == nil {
+			if err := admin.Delete(pf.Name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
+				fmt.Fprintf(os.Stderr, "warning: proxy delete %s: %v\n", pf.Name, err)
+			} else if err == nil {
+				fmt.Fprintf(os.Stderr, "==> Deregistered %q from proxy\n", pf.Name)
+			}
+		}
+
 		fmt.Fprintf(os.Stderr, "App %q destroyed.\n", ctx.AppName)
 		return nil
 	},
@@ -58,24 +78,20 @@ func generateDestroyScript(appName string) []byte {
 set -euo pipefail
 
 APP_NAME="%s"
-WORK_DIR="/opt/conoha/${APP_NAME}"
-REPO_DIR="/opt/conoha/${APP_NAME}.git"
-ENV_FILE="/opt/conoha/${APP_NAME}.env.server"
+APP_DIR="/opt/conoha/${APP_NAME}"
 
-echo "==> Stopping containers..."
-if [ -d "$WORK_DIR" ]; then
-    cd "$WORK_DIR"
-    docker compose down --remove-orphans 2>/dev/null || true
-fi
+echo "==> Stopping all compose projects for ${APP_NAME}..."
+for project in $(docker compose ls -a --format '{{.Name}}' 2>/dev/null | grep -E "^${APP_NAME}(-|$)" || true); do
+    echo "    - ${project}"
+    docker compose -p "${project}" down --remove-orphans 2>/dev/null || true
+done
 
-echo "==> Removing work directory..."
-rm -rf "$WORK_DIR"
+echo "==> Removing app directory..."
+rm -rf "${APP_DIR}"
 
-echo "==> Removing git repository..."
-rm -rf "$REPO_DIR"
-
-echo "==> Removing environment file..."
-rm -f "$ENV_FILE"
+# Legacy cleanup from v0.1.x (safe to attempt):
+rm -rf "/opt/conoha/${APP_NAME}.git" 2>/dev/null || true
+rm -f  "/opt/conoha/${APP_NAME}.env.server" 2>/dev/null || true
 
 echo "==> Done."
 `, appName))

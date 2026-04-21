@@ -118,7 +118,8 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS 管理（domain / record） |
 | `conoha storage` | オブジェクトストレージ（container / ls / cp / rm / publish） |
 | `conoha identity` | アイデンティティ管理（credential / subuser / role） |
-| `conoha app` | アプリデプロイ・管理（init / deploy / logs / status / stop / restart / env / destroy / reset / list） |
+| `conoha app` | アプリデプロイ・管理（init / deploy / rollback / logs / status / stop / restart / env / destroy / list） |
+| `conoha proxy` | conoha-proxy リバースプロキシ管理（boot / reboot / start / stop / restart / remove / logs / details / services） |
 | `conoha config` | CLI 設定管理（show / set / path） |
 | `conoha skill` | Claude Code スキル管理（install / update / remove） |
 
@@ -157,6 +158,47 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
 ```
 
 詳細は [docs/startup-script.md](docs/startup-script.md) を参照してください。
+
+## アプリデプロイ（conoha-proxy 経由 blue/green）
+
+v0.2.0 から `conoha app deploy` は [conoha-proxy](https://github.com/crowdy/conoha-proxy) 経由の blue/green デプロイに統一されました。Let's Encrypt による HTTPS、Host ヘッダールーティング、drain 窓内での即時ロールバックを提供します。初回セットアップの流れ：
+
+1. レポジトリルートに `conoha.yml` を作成：
+
+   ```yaml
+   name: myapp
+   hosts:
+     - app.example.com
+   web:
+     service: web
+     port: 8080
+   ```
+
+2. プロキシコンテナを VPS にブート：
+
+   ```bash
+   conoha proxy boot my-server --acme-email ops@example.com
+   ```
+
+3. DNS の A レコードを VPS に向ける（Let's Encrypt HTTP-01 検証に必要）。
+
+4. アプリを proxy に登録：
+
+   ```bash
+   conoha app init my-server
+   ```
+
+5. デプロイ：
+
+   ```bash
+   conoha app deploy my-server
+   ```
+
+ロールバック（drain 窓内のみ）：
+
+```bash
+conoha app rollback my-server
+```
 
 ## Claude Code スキル
 

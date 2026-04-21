@@ -55,16 +55,29 @@ ConoHa VPS3 CLIを使ったインフラ構築ガイド。
 | `conoha keypair list` | キーペア一覧を表示する |
 | `conoha keypair create <名前>` | キーペアを作成する |
 
-### アプリデプロイ
+### アプリデプロイ（conoha-proxy 経由 blue/green）
+
+v0.2.0 から `conoha app deploy` は [conoha-proxy](https://github.com/crowdy/conoha-proxy) 経由の blue/green デプロイに統一。Let's Encrypt TLS と Host ヘッダールーティングを含む。初回セットアップは「proxy boot → app init → app deploy」の 3 ステップ。
+
+前提：レポルートに `conoha.yml`（name / hosts / web.service / web.port を宣言）。
 
 | コマンド | 説明 |
 |---------|------|
-| `conoha app init <ID\|名前>` | サーバーにDocker環境を初期化する |
-| `conoha app deploy <ID\|名前>` | カレントディレクトリをサーバーにデプロイする |
-| `conoha app status <ID\|名前>` | アプリのコンテナ状態を表示する |
+| `conoha proxy boot <ID\|名前> --acme-email <mail>` | conoha-proxy コンテナをサーバーに起動する |
+| `conoha proxy reboot <ID\|名前> --acme-email <mail>` | プロキシイメージを更新して再起動する |
+| `conoha proxy logs <ID\|名前> --follow` | プロキシのログを見る |
+| `conoha proxy details <ID\|名前>` | プロキシのバージョン・readiness を表示する |
+| `conoha proxy services <ID\|名前>` | 登録されている service 一覧を表示する |
+| `conoha app init <ID\|名前>` | `conoha.yml` を proxy に service として登録する |
+| `conoha app deploy <ID\|名前>` | 新 slot を立ち上げて proxy に probe + swap を依頼（blue/green） |
+| `conoha app rollback <ID\|名前>` | drain 窓内で直前の slot にスワップバックする |
+| `conoha app status <ID\|名前>` | compose ps + proxy の phase / active / draining を表示する |
 | `conoha app logs <ID\|名前> --follow` | アプリのログをストリーミング表示する |
 | `conoha app stop <ID\|名前>` | アプリのコンテナを停止する |
 | `conoha app restart <ID\|名前>` | アプリのコンテナを再起動する |
+| `conoha app destroy <ID\|名前>` | 全 slot を停止して proxy から service を削除する |
+
+`.env.server` の代わりに blue/green スロットごとに `conoha-override.yml` が注入され、host ポートは kernel 割当（`127.0.0.1:0:<web.port>`）。compose ファイルに host 側ポートをハードコードしないこと。
 
 ## レシピ一覧
 

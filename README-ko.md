@@ -112,9 +112,51 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS 관리 (domain / record) |
 | `conoha storage` | 오브젝트 스토리지 (container / ls / cp / rm / publish) |
 | `conoha identity` | 아이덴티티 관리 (credential / subuser / role) |
-| `conoha app` | 앱 배포 및 관리 (init / deploy / logs / status / stop / restart / env / destroy / reset / list) |
+| `conoha app` | 앱 배포 및 관리 (init / deploy / rollback / logs / status / stop / restart / env / destroy / list) |
+| `conoha proxy` | conoha-proxy 리버스 프록시 관리 (boot / reboot / start / stop / restart / remove / logs / details / services) |
 | `conoha config` | CLI 설정 관리 (show / set / path) |
 | `conoha skill` | Claude Code 스킬 관리 (install / update / remove) |
+
+## 앱 배포 (conoha-proxy 기반 blue/green)
+
+v0.2.0 부터 `conoha app deploy` 는 [conoha-proxy](https://github.com/crowdy/conoha-proxy) 를 경유한 blue/green 배포로 통일되었습니다. Let's Encrypt HTTPS 자동 발급, Host 헤더 라우팅, drain 윈도우 내 즉시 롤백을 제공합니다. 초기 셋업 순서:
+
+1. 레포 루트에 `conoha.yml` 생성:
+
+   ```yaml
+   name: myapp
+   hosts:
+     - app.example.com
+   web:
+     service: web
+     port: 8080
+   ```
+
+2. VPS 에 프록시 컨테이너 부팅:
+
+   ```bash
+   conoha proxy boot my-server --acme-email ops@example.com
+   ```
+
+3. DNS A 레코드를 VPS 로 향하게 설정 (Let's Encrypt HTTP-01 검증에 필요).
+
+4. proxy 에 앱 등록:
+
+   ```bash
+   conoha app init my-server
+   ```
+
+5. 배포:
+
+   ```bash
+   conoha app deploy my-server
+   ```
+
+롤백 (drain 윈도우 내에만 유효):
+
+```bash
+conoha app rollback my-server
+```
 
 ## Claude Code 스킬
 

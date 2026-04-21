@@ -112,9 +112,51 @@ conoha server rename <server-id-or-name> new-name
 | `conoha dns` | DNS management (domain / record) |
 | `conoha storage` | Object storage (container / ls / cp / rm / publish) |
 | `conoha identity` | Identity management (credential / subuser / role) |
-| `conoha app` | App deployment & management (init / deploy / logs / status / stop / restart / env / destroy / reset / list) |
+| `conoha app` | App deployment & management (init / deploy / rollback / logs / status / stop / restart / env / destroy / list) |
+| `conoha proxy` | conoha-proxy reverse proxy management (boot / reboot / start / stop / restart / remove / logs / details / services) |
 | `conoha config` | CLI configuration (show / set / path) |
 | `conoha skill` | Claude Code skill management (install / update / remove) |
+
+## App deploy (blue/green via conoha-proxy)
+
+Since v0.2.0, `conoha app deploy` uses [conoha-proxy](https://github.com/crowdy/conoha-proxy) for blue/green deploys: automatic Let's Encrypt HTTPS, Host-header routing, and instant rollback inside the drain window. First-time setup:
+
+1. Create `conoha.yml` at your repo root:
+
+   ```yaml
+   name: myapp
+   hosts:
+     - app.example.com
+   web:
+     service: web
+     port: 8080
+   ```
+
+2. Boot the proxy container on the VPS:
+
+   ```bash
+   conoha proxy boot my-server --acme-email ops@example.com
+   ```
+
+3. Point DNS A record at the VPS (required for Let's Encrypt HTTP-01 validation).
+
+4. Register the app with the proxy:
+
+   ```bash
+   conoha app init my-server
+   ```
+
+5. Deploy:
+
+   ```bash
+   conoha app deploy my-server
+   ```
+
+Rollback (drain window only):
+
+```bash
+conoha app rollback my-server
+```
 
 ## Claude Code Skill
 
