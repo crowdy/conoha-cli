@@ -27,15 +27,8 @@ var stopCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
-		ok, err := prompt.Confirm(fmt.Sprintf("Stop app %q on %s?", ctx.AppName, ctx.Server.Name))
-		if err != nil {
-			return err
-		}
-		if !ok {
-			fmt.Fprintln(os.Stderr, "Cancelled.")
-			return nil
-		}
-
+		// Resolve mode + slot before the prompt so flag/marker conflicts or
+		// "not deployed" errors abort without asking the user to confirm (I3).
 		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName)
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
@@ -56,6 +49,15 @@ var stopCmd = &cobra.Command{
 			composeCmd = buildStopCmdForProxy(ctx.AppName, slot)
 		} else {
 			composeCmd = buildStopCmdForNoProxy(ctx.AppName)
+		}
+
+		ok, err := prompt.Confirm(fmt.Sprintf("Stop app %q on %s?", ctx.AppName, ctx.Server.Name))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "Cancelled.")
+			return nil
 		}
 
 		fmt.Fprintf(os.Stderr, "Stopping app %q on %s...\n", ctx.AppName, ctx.Server.Name)

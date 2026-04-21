@@ -24,9 +24,9 @@ func TestBuildNoProxyDeployCmd(t *testing.T) {
 		"docker compose -p myapp",
 		"-f 'compose.yml'",
 		"up -d --build",
-		// v0.1.x env.server merge must happen before compose up (spec §3.2).
+		// .env.server appended to .env so server-side values override repo (spec §3.6).
 		"/opt/conoha/myapp.env.server",
-		".env.merged",
+		">> .env",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)
@@ -39,11 +39,15 @@ func TestBuildNoProxyUploadCmd(t *testing.T) {
 	for _, want := range []string{
 		"mkdir -p '/opt/conoha/myapp'",
 		"tar xzf - -C '/opt/conoha/myapp'",
+		// Remove previous deploy's merged .env so tar becomes authoritative
+		// for repo-level env and `app env unset` takes effect on redeploy (C1 fix).
+		"rm -f '/opt/conoha/myapp/.env'",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)
 		}
 	}
+	// Must not wipe the entire app dir (would destroy named volumes + env.server dir siblings).
 	if strings.Contains(got, "rm -rf '/opt/conoha/myapp'") {
 		t.Errorf("no-proxy upload must not wipe app dir: %s", got)
 	}

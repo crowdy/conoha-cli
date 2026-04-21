@@ -145,6 +145,13 @@ func flagMode(cmd *cobra.Command) Mode {
 func ResolveMode(cmd *cobra.Command, cli *ssh.Client, app string) (Mode, error) {
 	want := flagMode(cmd)
 	got, readErr := ReadMarker(cli, app)
+	return resolveModeLogic(app, want, got, readErr)
+}
+
+// resolveModeLogic is the pure precedence layer extracted for unit testing.
+// want is the flag-requested mode ("" if none). got/readErr come from ReadMarker.
+// Non-ErrNoMarker read errors are propagated unchanged.
+func resolveModeLogic(app string, want, got Mode, readErr error) (Mode, error) {
 	if readErr != nil && !errors.Is(readErr, ErrNoMarker) {
 		return "", readErr
 	}

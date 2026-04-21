@@ -33,6 +33,25 @@ var destroyCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
+		// Resolve mode BEFORE the prompt so a flag/marker conflict aborts
+		// before the user commits, and BEFORE the destroy script runs
+		// because the script removes the .conoha-mode marker as part of rm -rf.
+		mode, modeErr := ResolveMode(cmd, ctx.Client, ctx.AppName)
+		if modeErr != nil && !errors.Is(modeErr, ErrNoMarker) {
+			return modeErr
+		}
+
+		// Marker absent: treat as legacy proxy deployment when conoha.yml
+		// validates locally. Old proxy apps from before this PR have no
+		// marker; skipping proxy DELETE would leak registrations (review I2).
+		legacyProxy := false
+		if errors.Is(modeErr, ErrNoMarker) {
+			if pf, pfErr := config.LoadProjectFile(config.ProjectFileName); pfErr == nil && pf.Validate() == nil {
+				legacyProxy = true
+				fmt.Fprintf(os.Stderr, "==> No mode marker on server; treating as legacy proxy deployment\n")
+			}
+		}
+
 		yes, _ := cmd.Flags().GetBool("yes")
 		if !yes {
 			ok, err := prompt.Confirm(fmt.Sprintf("Destroy app %q on %s? All data will be deleted.", ctx.AppName, ctx.Server.Name))
@@ -45,13 +64,6 @@ var destroyCmd = &cobra.Command{
 			}
 		}
 
-		// Resolve mode BEFORE running the destroy script, because the
-		// script removes the .conoha-mode marker as part of rm -rf.
-		mode, modeErr := ResolveMode(cmd, ctx.Client, ctx.AppName)
-		if modeErr != nil && !errors.Is(modeErr, ErrNoMarker) {
-			return modeErr
-		}
-
 		script := generateDestroyScript(ctx.AppName)
 		exitCode, err := internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
 		if err != nil {
@@ -61,7 +73,7 @@ var destroyCmd = &cobra.Command{
 			return fmt.Errorf("destroy exited with code %d", exitCode)
 		}
 
-		if mode == ModeProxy {
+		if mode == ModeProxy || legacyProxy {
 			dataDir, _ := cmd.Flags().GetString("data-dir")
 			if dataDir == "" {
 				dataDir = proxy.DefaultDataDir

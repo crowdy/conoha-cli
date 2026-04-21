@@ -81,6 +81,59 @@ func TestBuildReadCurrentSlotCmd(t *testing.T) {
 	}
 }
 
+func TestResolveModeLogic(t *testing.T) {
+	sentinelReadErr := errors.New("ssh broken")
+
+	cases := []struct {
+		name     string
+		want     Mode  // flag value, "" if unset
+		got      Mode  // ReadMarker return, used when readErr is nil or ErrNoMarker
+		readErr  error // nil, ErrNoMarker, or some other error
+		expMode  Mode  // expected return
+		expErr   error // if non-nil, errors.Is must match (or "any non-nil" when expMode == "" and no sentinel)
+		conflict bool  // expect ErrModeConflict specifically
+	}{
+		// Flag unset
+		{"no flag + no marker", "", "", ErrNoMarker, "", ErrNoMarker, false},
+		{"no flag + proxy marker", "", ModeProxy, nil, ModeProxy, nil, false},
+		{"no flag + no-proxy marker", "", ModeNoProxy, nil, ModeNoProxy, nil, false},
+		// Flag=proxy
+		{"proxy flag + no marker", ModeProxy, "", ErrNoMarker, ModeProxy, nil, false},
+		{"proxy flag + proxy marker", ModeProxy, ModeProxy, nil, ModeProxy, nil, false},
+		{"proxy flag + no-proxy marker", ModeProxy, ModeNoProxy, nil, "", nil, true},
+		// Flag=no-proxy
+		{"no-proxy flag + no marker", ModeNoProxy, "", ErrNoMarker, ModeNoProxy, nil, false},
+		{"no-proxy flag + no-proxy marker", ModeNoProxy, ModeNoProxy, nil, ModeNoProxy, nil, false},
+		{"no-proxy flag + proxy marker", ModeNoProxy, ModeProxy, nil, "", nil, true},
+		// SSH/read error — propagated regardless of flag
+		{"ssh error + no flag", "", "", sentinelReadErr, "", sentinelReadErr, false},
+		{"ssh error + proxy flag", ModeProxy, "", sentinelReadErr, "", sentinelReadErr, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			mode, err := resolveModeLogic("myapp", c.want, c.got, c.readErr)
+			if mode != c.expMode {
+				t.Errorf("mode = %q, want %q", mode, c.expMode)
+			}
+			switch {
+			case c.conflict:
+				if !errors.Is(err, ErrModeConflict) {
+					t.Errorf("expected ErrModeConflict, got %v", err)
+				}
+			case c.expErr != nil:
+				if !errors.Is(err, c.expErr) {
+					t.Errorf("expected %v, got %v", c.expErr, err)
+				}
+			default:
+				if err != nil {
+					t.Errorf("expected nil err, got %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestFormatModeConflictError(t *testing.T) {
 	err := formatModeConflictError("myapp", ModeProxy, ModeNoProxy)
 	if !errors.Is(err, ErrModeConflict) {

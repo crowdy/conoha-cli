@@ -102,20 +102,30 @@ func runNoProxyDeploy(cmd *cobra.Command, sshClient *ssh.Client, s *model.Server
 }
 
 // buildNoProxyUploadCmd extracts the incoming tar archive into the app work
-// directory, preserving any existing files so that .env.server and named
-// volumes survive redeploys. Caller MUST pre-validate app via internalssh.ValidateAppName.
+// directory. It removes the previous deploy's merged .env (if any) before
+// extracting so the tar becomes authoritative for repo-level .env content;
+// the deploy command then overlays /opt/conoha/<app>.env.server on top.
+// Other sibling files (e.g. named-volume binds) are preserved.
+// Caller MUST pre-validate app via internalssh.ValidateAppName.
 func buildNoProxyUploadCmd(workDir string) string {
 	return fmt.Sprintf(
-		"mkdir -p '%[1]s' && tar xzf - -C '%[1]s'",
+		"mkdir -p '%[1]s' && rm -f '%[1]s/.env' && tar xzf - -C '%[1]s'",
 		workDir)
 }
 
 // buildNoProxyDeployCmd brings the flat-layout compose project up in place.
 // The compose project name equals the app name (no slot suffix).
-// Before compose up, merges /opt/conoha/<app>.env.server (written by
-// `conoha app env set`) into <workDir>/.env so values set out-of-band
-// are available for compose interpolation. User's repo-level .env
-// (if any) takes precedence via last-occurrence semantics.
+//
+// Env merge (v0.1.x parity, spec §3.6): appends /opt/conoha/<app>.env.server
+// (written by `conoha app env set`) to <workDir>/.env so server-side values
+// win over repo-level ones via last-occurrence semantics. This is the
+// expected precedence for runtime-secret override.
+//
+// Because buildNoProxyUploadCmd cleared any prior merged .env before tar
+// extraction, each deploy starts from the repo's committed .env (if any)
+// and re-overlays the current .env.server. `app env unset` therefore takes
+// effect on the next deploy.
+//
 // Caller MUST pre-validate app via internalssh.ValidateAppName.
 // composeFile is defensively single-quoted — today it comes from the
 // ResolveComposeFile whitelist, but quoting hardens against future callers.
@@ -123,10 +133,8 @@ func buildNoProxyDeployCmd(workDir, app, composeFile string) string {
 	envServer := fmt.Sprintf("/opt/conoha/%s.env.server", app)
 	return fmt.Sprintf(
 		"cd '%s' && { "+
-			"if [ -s '%s' ]; then "+
-			"  touch .env; "+
-			"  { cat '%s'; printf '\\n'; cat .env; } > .env.merged && mv .env.merged .env; "+
-			"fi; "+
+			"touch .env; "+
+			"if [ -s '%s' ]; then printf '\\n' >> .env && cat '%s' >> .env; fi; "+
 			"} && docker compose -p %s -f '%s' up -d --build",
 		workDir, envServer, envServer, app, composeFile)
 }
