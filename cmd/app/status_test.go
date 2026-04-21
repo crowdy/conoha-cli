@@ -17,7 +17,7 @@ func TestStatusCmd_HasModeFlags(t *testing.T) {
 func TestBuildStatusCmd_Proxy(t *testing.T) {
 	got := buildStatusCmdForProxy("myapp")
 	for _, want := range []string{
-		"docker compose ls",
+		`docker ps -a --format '{{.Label "com.docker.compose.project"}}'`,
 		`grep -E "^myapp(-|$)"`,
 		"docker compose -p",
 		"ps",
@@ -25,6 +25,11 @@ func TestBuildStatusCmd_Proxy(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)
 		}
+	}
+	// Regression: the legacy 'docker compose ls --format "{{.Name}}"' pattern
+	// stops working on Docker Compose v5 (#114) — must not come back.
+	if strings.Contains(got, "{{.Name}}") {
+		t.Errorf("buildStatusCmdForProxy must not use the legacy Go-template format; got: %s", got)
 	}
 }
 

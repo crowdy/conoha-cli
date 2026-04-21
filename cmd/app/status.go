@@ -79,12 +79,15 @@ var statusCmd = &cobra.Command{
 }
 
 func buildStatusCmdForProxy(app string) string {
+	// Enumerate slot projects via container labels rather than
+	// 'docker compose ls --format "{{.Name}}"', which fails silently on
+	// Docker Compose v5 hosts and would produce an empty listing (#114).
 	return fmt.Sprintf(
-		`for p in $(docker compose ls -a --format '{{.Name}}' 2>/dev/null | grep -E "^%[1]s(-|$)" || true); do `+
+		`for p in $(%[1]s); do `+
 			`echo "--- compose project: ${p} ---"; `+
 			`docker compose -p "${p}" ps; `+
 			`done`,
-		app)
+		composeProjectEnumPipeline(app))
 }
 
 func buildStatusCmdForNoProxy(app string) string {

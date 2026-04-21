@@ -95,17 +95,28 @@ var destroyCmd = &cobra.Command{
 }
 
 func generateDestroyScript(appName string) []byte {
+	// Compose project enumeration comes from composeProjectEnumPipeline —
+	// a shared helper that avoids the 'docker compose ls --format
+	// "{{.Name}}"' pattern Docker Compose v5 no longer supports
+	// (issue #114). Shared with buildStatusCmdForProxy so both paths stay
+	// in sync on hosts with modern Compose.
 	return []byte(fmt.Sprintf(`#!/bin/bash
 set -euo pipefail
 
-APP_NAME="%s"
+APP_NAME="%[1]s"
 APP_DIR="/opt/conoha/${APP_NAME}"
 
 echo "==> Stopping all compose projects for ${APP_NAME}..."
-for project in $(docker compose ls -a --format '{{.Name}}' 2>/dev/null | grep -E "^${APP_NAME}(-|$)" || true); do
-    echo "    - ${project}"
-    docker compose -p "${project}" down --remove-orphans 2>/dev/null || true
-done
+projects=$(%[2]s)
+if [ -z "${projects}" ]; then
+    echo "    (no compose projects found for ${APP_NAME})"
+else
+    while IFS= read -r project; do
+        [ -z "${project}" ] && continue
+        echo "    - ${project}"
+        docker compose -p "${project}" down --remove-orphans 2>/dev/null || true
+    done <<< "${projects}"
+fi
 
 echo "==> Removing app directory..."
 rm -rf "${APP_DIR}"
@@ -115,5 +126,5 @@ rm -rf "/opt/conoha/${APP_NAME}.git" 2>/dev/null || true
 rm -f  "/opt/conoha/${APP_NAME}.env.server" 2>/dev/null || true
 
 echo "==> Done."
-`, appName))
+`, appName, composeProjectEnumPipeline("${APP_NAME}")))
 }
