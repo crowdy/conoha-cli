@@ -36,11 +36,16 @@ func TestGenerateDestroyScript_DoesNotUseLegacyGoTemplateFormat(t *testing.T) {
 }
 
 // The enumeration must survive across docker compose versions. Labels on
-// containers (com.docker.compose.project) are the stable source of truth.
+// containers (com.docker.compose.project) read via `docker ps -a` are the
+// stable source of truth; `docker inspect` or other approaches would not
+// satisfy the #114 fix (addresses review NP1).
 func TestGenerateDestroyScript_EnumeratesViaComposeProjectLabel(t *testing.T) {
 	script := string(generateDestroyScript("myapp"))
 	if !strings.Contains(script, "com.docker.compose.project") {
 		t.Errorf("destroy script should enumerate compose projects via the com.docker.compose.project label; script:\n%s", script)
+	}
+	if !strings.Contains(script, `docker ps -a --format '{{.Label "com.docker.compose.project"}}'`) {
+		t.Errorf("destroy script should read labels via `docker ps -a --format`; script:\n%s", script)
 	}
 }
 

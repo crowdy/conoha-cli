@@ -95,23 +95,19 @@ var destroyCmd = &cobra.Command{
 }
 
 func generateDestroyScript(appName string) []byte {
-	// Enumerate compose projects via container labels instead of
-	// 'docker compose ls --format "{{.Name}}"' — Docker Compose v5+ dropped
-	// Go-template format support for 'ls', so the template silently fails
-	// on recent hosts and the cleanup loop iterates over nothing (issue #114).
-	// The com.docker.compose.project label is stable across compose versions.
+	// Compose project enumeration comes from composeProjectEnumPipeline —
+	// a shared helper that avoids the 'docker compose ls --format
+	// "{{.Name}}"' pattern Docker Compose v5 no longer supports
+	// (issue #114). Shared with buildStatusCmdForProxy so both paths stay
+	// in sync on hosts with modern Compose.
 	return []byte(fmt.Sprintf(`#!/bin/bash
 set -euo pipefail
 
-APP_NAME="%s"
+APP_NAME="%[1]s"
 APP_DIR="/opt/conoha/${APP_NAME}"
 
 echo "==> Stopping all compose projects for ${APP_NAME}..."
-projects=$(docker ps -a --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null \
-    | awk 'NF' \
-    | sort -u \
-    | grep -E "^${APP_NAME}(-|$)" \
-    || true)
+projects=$(%[2]s)
 if [ -z "${projects}" ]; then
     echo "    (no compose projects found for ${APP_NAME})"
 else
@@ -130,5 +126,5 @@ rm -rf "/opt/conoha/${APP_NAME}.git" 2>/dev/null || true
 rm -f  "/opt/conoha/${APP_NAME}.env.server" 2>/dev/null || true
 
 echo "==> Done."
-`, appName))
+`, appName, composeProjectEnumPipeline("${APP_NAME}")))
 }
