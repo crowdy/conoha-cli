@@ -95,6 +95,11 @@ var destroyCmd = &cobra.Command{
 }
 
 func generateDestroyScript(appName string) []byte {
+	// Enumerate compose projects via container labels instead of
+	// 'docker compose ls --format "{{.Name}}"' — Docker Compose v5+ dropped
+	// Go-template format support for 'ls', so the template silently fails
+	// on recent hosts and the cleanup loop iterates over nothing (issue #114).
+	// The com.docker.compose.project label is stable across compose versions.
 	return []byte(fmt.Sprintf(`#!/bin/bash
 set -euo pipefail
 
@@ -102,10 +107,20 @@ APP_NAME="%s"
 APP_DIR="/opt/conoha/${APP_NAME}"
 
 echo "==> Stopping all compose projects for ${APP_NAME}..."
-for project in $(docker compose ls -a --format '{{.Name}}' 2>/dev/null | grep -E "^${APP_NAME}(-|$)" || true); do
-    echo "    - ${project}"
-    docker compose -p "${project}" down --remove-orphans 2>/dev/null || true
-done
+projects=$(docker ps -a --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null \
+    | awk 'NF' \
+    | sort -u \
+    | grep -E "^${APP_NAME}(-|$)" \
+    || true)
+if [ -z "${projects}" ]; then
+    echo "    (no compose projects found for ${APP_NAME})"
+else
+    while IFS= read -r project; do
+        [ -z "${project}" ] && continue
+        echo "    - ${project}"
+        docker compose -p "${project}" down --remove-orphans 2>/dev/null || true
+    done <<< "${projects}"
+fi
 
 echo "==> Removing app directory..."
 rm -rf "${APP_DIR}"
