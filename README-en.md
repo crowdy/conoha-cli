@@ -117,30 +117,39 @@ conoha server rename <server-id-or-name> new-name
 | `conoha config` | CLI configuration (show / set / path) |
 | `conoha skill` | Claude Code skill management (install / update / remove) |
 
-### Two deploy modes
+## App Deploy
 
-`conoha app` supports two modes that can coexist on the same VPS:
+`conoha app` supports two deploy modes that can coexist on the same VPS. `conoha app init` writes a marker on the server (`/opt/conoha/<name>/.conoha-mode`), and every subsequent `deploy` / `status` / `logs` / `stop` / `restart` / `destroy` / `rollback` auto-detects the mode from it. Pass `--proxy` or `--no-proxy` to override; a mismatch with the marker is an error (destroy + re-init to switch modes).
 
-| Mode | When to use | Layout |
-|---|---|---|
-| **proxy** (default) | Public app with a domain and TLS | Blue/green slots under `/opt/conoha/<name>/<slot>/` managed via conoha-proxy |
-| **no-proxy** (`--no-proxy`) | Testing, internal/dev VPS, non-HTTP services, hobby apps | Flat `/opt/conoha/<name>/` with plain `docker compose up` |
+| Mode | Default | When to use | Layout | `conoha.yml` | `conoha proxy boot` | DNS / TLS |
+|---|:-:|---|---|:-:|:-:|:-:|
+| **proxy** (blue/green) | ✓ | Public app with a domain + Let's Encrypt TLS | `/opt/conoha/<name>/<slot>/` blue/green slots | required | required | required |
+| **no-proxy** (flat) |  | Testing, internal / dev VPS, non-HTTP services, hobby apps | `/opt/conoha/<name>/` flat single dir | n/a | n/a | n/a |
 
-Initialize with `conoha app init --no-proxy --app-name <name> <server>`, then `conoha app deploy --no-proxy --app-name <name> <server>`. No `conoha.yml` required in no-proxy mode.
+### proxy mode (default): conoha-proxy blue/green
 
-## App deploy (blue/green via conoha-proxy)
-
-Since v0.2.0, `conoha app deploy` uses [conoha-proxy](https://github.com/crowdy/conoha-proxy) for blue/green deploys: automatic Let's Encrypt HTTPS, Host-header routing, and instant rollback inside the drain window. First-time setup:
+[conoha-proxy](https://github.com/crowdy/conoha-proxy) provides Let's Encrypt HTTPS, Host-header routing, and instant rollback inside the drain window.
 
 1. Create `conoha.yml` at your repo root:
 
    ```yaml
-   name: myapp
+   name: myapp                   # DNS-1123 label (lowercase alnum + hyphen, 1-63 chars)
    hosts:
-     - app.example.com
+     - app.example.com           # one or more FQDNs, no duplicates
    web:
-     service: web
-     port: 8080
+     service: web                # must match a service in the compose file
+     port: 8080                  # container-side listen port (1-65535)
+   # --- optional ---
+   compose_file: docker-compose.yml   # auto-detected (conoha-docker-compose.yml → docker-compose.yml → compose.yml)
+   accessories: [db, redis]           # sibling services that join the same network
+   health:
+     path: /healthz
+     interval_ms: 1000
+     timeout_ms: 500
+     healthy_threshold: 2
+     unhealthy_threshold: 3
+   deploy:
+     drain_ms: 5000                   # drain window before tearing down the old slot (milliseconds)
    ```
 
 2. Boot the proxy container on the VPS:
@@ -149,25 +158,81 @@ Since v0.2.0, `conoha app deploy` uses [conoha-proxy](https://github.com/crowdy/
    conoha proxy boot my-server --acme-email ops@example.com
    ```
 
-3. Point DNS A record at the VPS (required for Let's Encrypt HTTP-01 validation).
+3. Point the DNS A record at the VPS (Let's Encrypt HTTP-01 validation needs it).
 
-4. Register the app with the proxy:
-
-   ```bash
-   conoha app init my-server
-   ```
-
-5. Deploy:
+4. Register with the proxy and deploy:
 
    ```bash
-   conoha app deploy my-server
+   conoha app init my-server --app-name myapp
+   conoha app deploy my-server --app-name myapp
    ```
 
-Rollback (drain window only):
+5. Rollback (drain window only — instant swap back to the previous slot):
+
+   ```bash
+   conoha app rollback my-server --app-name myapp
+   ```
+
+`deploy --slot <id>` pins the slot ID (rule: `[a-z0-9][a-z0-9-]{0,63}`; default is git short SHA or timestamp). Reusing an existing slot ID purges its work dir before re-extracting.
+
+### no-proxy mode: flat single-slot
+
+Shortest path: no `conoha.yml`, no proxy, no DNS required. A `docker-compose.yml` is enough. This is equivalent to `docker compose up -d --build` over SSH and is the right choice when you do not need TLS or Host-based routing (testing, internal tools, non-HTTP services, hobby deployments).
 
 ```bash
-conoha app rollback my-server
+# Initialize (installs Docker / Compose only; proxy is not required)
+conoha app init my-server --app-name myapp --no-proxy
+
+# Deploy (tar current dir → upload → extract to /opt/conoha/myapp/ → docker compose up -d --build)
+conoha app deploy my-server --app-name myapp --no-proxy
 ```
+
+Subsequent `status` / `logs` / `stop` / `restart` / `destroy` auto-detect no-proxy mode from the server marker, so you do not need to repeat `--no-proxy` (passing it again is allowed and is a no-op):
+
+```bash
+conoha app status my-server --app-name myapp
+conoha app logs my-server --app-name myapp --follow
+conoha app destroy my-server --app-name myapp
+```
+
+`rollback` is not available in no-proxy mode (there is no blue/green swap; invoking it raises a mode-mismatch error). Redeploy a previous commit instead: `git checkout <sha> && conoha app deploy ...`.
+
+### Switching modes
+
+Destroy, then re-init in the opposite mode:
+
+```bash
+conoha app destroy my-server --app-name myapp            # removes marker and work dir
+conoha app init my-server --app-name myapp --no-proxy    # re-initialize in the other mode
+```
+
+Different `<app-name>`s on the same VPS can run in different modes side by side.
+
+### Key flags
+
+| Flag | Command | Description |
+|---|---|---|
+| `--app-name <name>` | all | App name (required in non-TTY environments) |
+| `--proxy` / `--no-proxy` | every lifecycle cmd except `init` | Override the server marker (mismatch is an error) |
+| `--slot <id>` | `deploy` | Pin the slot ID (proxy mode only) |
+| `--drain-ms <ms>` | `rollback` | Override the rollback drain window (0 = proxy default) |
+| `--follow` / `-f` | `logs` | Stream in real time |
+| `--service <name>` | `logs` | Restrict to one service |
+| `--tail <n>` | `logs` | Line count (default 100) |
+| `--data-dir <path>` | proxy-facing cmds | Server-side proxy data dir (default `/var/lib/conoha-proxy`) |
+
+### Environment variables
+
+Server-side env vars persist across deploys (both modes):
+
+```bash
+conoha app env set my-server --app-name myapp DATABASE_URL=postgres://...
+conoha app env list my-server --app-name myapp
+conoha app env get my-server --app-name myapp DATABASE_URL
+conoha app env unset my-server --app-name myapp DATABASE_URL
+```
+
+Alternatively, place a local `.env.server` and it is copied to `.env` on deploy automatically.
 
 ## Claude Code Skill
 
