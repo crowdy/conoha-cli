@@ -21,6 +21,7 @@ import (
 func init() {
 	addAppFlags(initCmd)
 	initCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
+	AddModeFlags(initCmd)
 }
 
 var initCmd = &cobra.Command{
@@ -33,47 +34,89 @@ against the proxy's Admin API.
 Run 'conoha proxy boot' on the server first.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pf, err := config.LoadProjectFile(config.ProjectFileName)
-		if err != nil {
-			return err
+		noProxy, _ := cmd.Flags().GetBool("no-proxy")
+		if noProxy {
+			return runInitNoProxy(cmd, args[0])
 		}
-		if err := pf.Validate(); err != nil {
-			return err
-		}
-		composePath, err := pf.ResolveComposeFile(".")
-		if err != nil {
-			return err
-		}
-		if err := pf.ValidateAgainstCompose(composePath); err != nil {
-			return err
-		}
-
-		sshClient, s, ip, err := connectToServer(cmd, args[0])
-		if err != nil {
-			return err
-		}
-		defer func() { _ = sshClient.Close() }()
-
-		dataDir, _ := cmd.Flags().GetString("data-dir")
-		client := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
-
-		if err := warnOnLegacyRepo(sshClient, pf.Name); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-		}
-
-		fmt.Fprintf(os.Stderr, "==> Registering service %q on %s (%s)\n", pf.Name, s.Name, ip)
-		svc, err := client.Upsert(proxypkg.UpsertRequest{
-			Name:         pf.Name,
-			Hosts:        pf.Hosts,
-			HealthPolicy: mapHealth(pf.Health),
-		})
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Service %q registered. phase=%s tls=%s\n", svc.Name, svc.Phase, svc.TLSStatus)
-		fmt.Fprintf(os.Stderr, "Next: run 'conoha app deploy %s' to push your app.\n", args[0])
-		return nil
+		return runInitProxy(cmd, args[0])
 	},
+}
+
+func runInitProxy(cmd *cobra.Command, serverID string) error {
+	pf, err := config.LoadProjectFile(config.ProjectFileName)
+	if err != nil {
+		return err
+	}
+	if err := pf.Validate(); err != nil {
+		return err
+	}
+	composePath, err := pf.ResolveComposeFile(".")
+	if err != nil {
+		return err
+	}
+	if err := pf.ValidateAgainstCompose(composePath); err != nil {
+		return err
+	}
+
+	sshClient, s, ip, err := connectToServer(cmd, serverID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sshClient.Close() }()
+
+	dataDir, _ := cmd.Flags().GetString("data-dir")
+	client := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
+
+	if err := warnOnLegacyRepo(sshClient, pf.Name); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "==> Registering service %q on %s (%s)\n", pf.Name, s.Name, ip)
+	svc, err := client.Upsert(proxypkg.UpsertRequest{
+		Name:         pf.Name,
+		Hosts:        pf.Hosts,
+		HealthPolicy: mapHealth(pf.Health),
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Service %q registered. phase=%s tls=%s\n", svc.Name, svc.Phase, svc.TLSStatus)
+	fmt.Fprintf(os.Stderr, "Next: run 'conoha app deploy %s' to push your app.\n", serverID)
+	if err := WriteMarker(sshClient, pf.Name, ModeProxy); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: write mode marker: %v\n", err)
+	}
+	return nil
+}
+
+func runInitNoProxy(cmd *cobra.Command, serverID string) error {
+	appName, _ := cmd.Flags().GetString("app-name")
+	if appName == "" {
+		return fmt.Errorf("--app-name is required with --no-proxy")
+	}
+	if err := internalssh.ValidateAppName(appName); err != nil {
+		return err
+	}
+	sshClient, s, ip, err := connectToServer(cmd, serverID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sshClient.Close() }()
+
+	// Verify docker is present.
+	code, err := internalssh.RunCommand(sshClient, "command -v docker >/dev/null 2>&1", os.Stderr, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("docker check: %w", err)
+	}
+	if code != 0 {
+		return fmt.Errorf("docker is not installed on %s (%s)", s.Name, ip)
+	}
+
+	fmt.Fprintf(os.Stderr, "==> Initializing %q on %s (%s) in no-proxy mode\n", appName, s.Name, ip)
+	if err := WriteMarker(sshClient, appName, ModeNoProxy); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Initialized. Next: run 'conoha app deploy --no-proxy --app-name %s %s'\n", appName, serverID)
+	return nil
 }
 
 // connectToServer opens an SSH session to the server identified by id-or-name.
