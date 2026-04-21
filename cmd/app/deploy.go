@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/proxy"
 	"github.com/crowdy/conoha-cli/internal/config"
+	"github.com/crowdy/conoha-cli/internal/model"
 	proxypkg "github.com/crowdy/conoha-cli/internal/proxy"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
@@ -19,6 +21,7 @@ func init() {
 	addAppFlags(deployCmd)
 	deployCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
 	deployCmd.Flags().String("slot", "", "override slot ID (default: git short SHA or timestamp). Must match [a-z0-9][a-z0-9-]{0,63}. Reusing an existing slot removes its work dir before re-extracting; pending drain-teardowns for the same slot will auto-skip")
+	AddModeFlags(deployCmd)
 }
 
 var deployCmd = &cobra.Command{
@@ -29,11 +32,94 @@ in a new compose slot on a dynamic port, then ask conoha-proxy to probe and
 swap. The previous slot is torn down after the drain window.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDeploy(cmd, args[0])
+		return runDeployDispatch(cmd, args[0])
 	},
 }
 
-func runDeploy(cmd *cobra.Command, serverID string) error {
+// runDeployDispatch resolves mode (flag override + server marker) and calls
+// the proxy or no-proxy deploy path.
+func runDeployDispatch(cmd *cobra.Command, serverID string) error {
+	noProxyFlag, _ := cmd.Flags().GetBool("no-proxy")
+
+	if noProxyFlag {
+		appName, _ := cmd.Flags().GetString("app-name")
+		if appName == "" {
+			return fmt.Errorf("--app-name is required with --no-proxy")
+		}
+		if err := internalssh.ValidateAppName(appName); err != nil {
+			return err
+		}
+		sshClient, s, ip, err := connectToServer(cmd, serverID)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = sshClient.Close() }()
+		got, err := ReadMarker(sshClient, appName)
+		if err != nil {
+			if errors.Is(err, ErrNoMarker) {
+				return fmt.Errorf("app %q not initialized on this server — run 'conoha app init --no-proxy --app-name %s %s' first", appName, appName, serverID)
+			}
+			return err
+		}
+		if got != ModeNoProxy {
+			return formatModeConflictError(appName, got, ModeNoProxy)
+		}
+		return runNoProxyDeploy(cmd, sshClient, s, ip, appName)
+	}
+
+	return runProxyDeploy(cmd, serverID)
+}
+
+// runNoProxyDeploy uploads the working tree to /opt/conoha/<app>/ and runs
+// 'docker compose -p <app> up -d --build'. No proxy upsert, no slot.
+func runNoProxyDeploy(cmd *cobra.Command, sshClient *ssh.Client, s *model.Server, ip, appName string) error {
+	fmt.Fprintf(os.Stderr, "==> Deploying %q to %s (%s) in no-proxy mode\n", appName, s.Name, ip)
+
+	patterns, err := loadIgnorePatterns(".")
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := createTarGz(".", patterns, &buf); err != nil {
+		return fmt.Errorf("create archive: %w", err)
+	}
+	workDir := "/opt/conoha/" + appName
+	if err := runRemote(sshClient, buildNoProxyUploadCmd(workDir), &buf); err != nil {
+		return fmt.Errorf("upload: %w", err)
+	}
+
+	pf := &config.ProjectFile{}
+	composeFile, err := pf.ResolveComposeFile(".")
+	if err != nil {
+		return err
+	}
+
+	if err := runRemote(sshClient, buildNoProxyDeployCmd(workDir, appName, composeFile), nil); err != nil {
+		return fmt.Errorf("compose up: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "Deploy complete.")
+	return nil
+}
+
+// buildNoProxyUploadCmd extracts the incoming tar archive into the app work
+// directory, preserving any existing files so that .env.server and named
+// volumes survive redeploys. Caller MUST pre-validate app via internalssh.ValidateAppName.
+func buildNoProxyUploadCmd(workDir string) string {
+	return fmt.Sprintf(
+		"mkdir -p '%[1]s' && tar xzf - -C '%[1]s'",
+		workDir)
+}
+
+// buildNoProxyDeployCmd brings the flat-layout compose project up in place.
+// The compose project name equals the app name (no slot suffix).
+// Caller MUST pre-validate app via internalssh.ValidateAppName.
+func buildNoProxyDeployCmd(workDir, app, composeFile string) string {
+	return fmt.Sprintf(
+		"cd '%s' && docker compose -p %s -f %s up -d --build",
+		workDir, app, composeFile)
+}
+
+func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 	pf, err := config.LoadProjectFile(config.ProjectFileName)
 	if err != nil {
 		return err
