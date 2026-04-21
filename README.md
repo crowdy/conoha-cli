@@ -159,30 +159,39 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
 
 詳細は [docs/startup-script.md](docs/startup-script.md) を参照してください。
 
-### 2 つのデプロイモード
+## アプリデプロイ
 
-`conoha app` は同一 VPS 上で共存可能な 2 つのモードを提供します:
+`conoha app` は同一 VPS 上で共存可能な 2 つのデプロイモードを提供します。どちらのモードも `conoha app init` で初期化した時点でサーバー側にマーカー (`/opt/conoha/<name>/.conoha-mode`) が書かれ、以降の `deploy` / `status` / `logs` / `stop` / `restart` / `destroy` / `rollback` は自動的にそのモードで動作します。`--proxy` / `--no-proxy` フラグを明示した場合はフラグが優先され、マーカーと不一致ならエラーになります（`conoha app destroy` → 再 `init` で切り替え可能）。
 
-| モード | 用途 | レイアウト |
-|---|---|---|
-| **proxy** (既定) | ドメイン + TLS の公開アプリ | `/opt/conoha/<name>/<slot>/` の blue/green スロット (conoha-proxy 管理) |
-| **no-proxy** (`--no-proxy`) | テスト、内部・開発 VPS、非 HTTP サービス、ホビーアプリ | `/opt/conoha/<name>/` フラット (単純な `docker compose up`) |
+| モード | 既定 | 用途 | レイアウト | `conoha.yml` | `conoha proxy boot` | DNS / TLS |
+|---|:-:|---|---|:-:|:-:|:-:|
+| **proxy** (blue/green) | ✓ | ドメイン + Let's Encrypt TLS の公開アプリ | `/opt/conoha/<name>/<slot>/` (blue/green スロット) | 必要 | 必要 | 必要 |
+| **no-proxy** (flat) |  | テスト、内部・開発 VPS、非 HTTP サービス、ホビーアプリ | `/opt/conoha/<name>/` (フラット単一ディレクトリ) | 不要 | 不要 | 不要 |
 
-`conoha app init --no-proxy --app-name <name> <server>` で初期化し、`conoha app deploy --no-proxy --app-name <name> <server>` でデプロイします。no-proxy モードでは `conoha.yml` は不要です。
+### proxy モード (既定): conoha-proxy 経由 blue/green
 
-## アプリデプロイ（conoha-proxy 経由 blue/green）
-
-v0.2.0 から `conoha app deploy` は [conoha-proxy](https://github.com/crowdy/conoha-proxy) 経由の blue/green デプロイに統一されました。Let's Encrypt による HTTPS、Host ヘッダールーティング、drain 窓内での即時ロールバックを提供します。初回セットアップの流れ：
+[conoha-proxy](https://github.com/crowdy/conoha-proxy) が Let's Encrypt HTTPS、Host ヘッダールーティング、drain 窓内の即時ロールバックを提供します。
 
 1. レポジトリルートに `conoha.yml` を作成：
 
    ```yaml
-   name: myapp
+   name: myapp                   # DNS-1123 ラベル (小文字英数字とハイフン、1-63 文字)
    hosts:
-     - app.example.com
+     - app.example.com           # 複数指定可、重複不可
    web:
-     service: web
-     port: 8080
+     service: web                # compose ファイル内のサービス名と一致必須
+     port: 8080                  # コンテナ側のリッスンポート (1-65535)
+   # --- 以下は任意 ---
+   compose_file: docker-compose.yml   # 未指定時は conoha-docker-compose.yml → docker-compose.yml → compose.yml の順で自動検出
+   accessories: [db, redis]           # web と同じネットワークに接続する副次サービス
+   health:
+     path: /healthz
+     interval_ms: 1000
+     timeout_ms: 500
+     healthy_threshold: 2
+     unhealthy_threshold: 3
+   deploy:
+     drain_ms: 5000                   # 旧スロットを落とすまでの drain 窓 (ミリ秒、未指定時は 30000)
    ```
 
 2. プロキシコンテナを VPS にブート：
@@ -193,23 +202,79 @@ v0.2.0 から `conoha app deploy` は [conoha-proxy](https://github.com/crowdy/c
 
 3. DNS の A レコードを VPS に向ける（Let's Encrypt HTTP-01 検証に必要）。
 
-4. アプリを proxy に登録：
+4. アプリを proxy に登録してデプロイ：
 
    ```bash
    conoha app init my-server
-   ```
-
-5. デプロイ：
-
-   ```bash
    conoha app deploy my-server
    ```
 
-ロールバック（drain 窓内のみ）：
+5. ロールバック（drain 窓内のみ、旧スロットへ即時戻し）：
+
+   ```bash
+   conoha app rollback my-server
+   ```
+
+`deploy --slot <id>` で slot ID を固定できます (規則: `[a-z0-9][a-z0-9-]{0,63}`、既定は git short SHA または timestamp)。同名 slot を再利用すると作業ディレクトリを削除してから再展開します。
+
+### no-proxy モード: フラット単一スロット
+
+`conoha.yml` / proxy / DNS が不要な最短経路。`docker-compose.yml` だけあれば動きます。`docker compose up -d --build` をリモートで叩くのと等価なので、TLS / Host ベースルーティングが必要ないケース (テスト、社内ツール、非 HTTP サービス、ホビー用途) に向きます。
 
 ```bash
-conoha app rollback my-server
+# 初期化 (Docker / Compose が入っていることを検証してマーカーを書き込む。インストールは行わないので、Docker 未導入の VPS では事前に `conoha server create --user-data ./install-docker.sh` 等で入れておく必要がある)
+conoha app init my-server --app-name myapp --no-proxy
+
+# デプロイ (カレントディレクトリを tar して転送 → /opt/conoha/myapp/ に展開 → docker compose up -d --build)
+conoha app deploy my-server --app-name myapp --no-proxy
 ```
+
+以降の `status` / `logs` / `stop` / `restart` / `destroy` はサーバー上のマーカーから自動的に no-proxy モードで動作するため、フラグの再指定は不要です (明示してもエラーにはなりません):
+
+```bash
+conoha app status my-server --app-name myapp
+conoha app logs my-server --app-name myapp --follow
+conoha app destroy my-server --app-name myapp
+```
+
+no-proxy モードには blue/green swap が存在しないため、`rollback` は利用できません (実行すると "rollback is not supported in no-proxy mode" エラーが出ます)。履歴から戻したい場合は該当コミットを checkout して `deploy` し直してください。
+
+### モードの切り替え
+
+既存のアプリのモードを変更するには、一度破棄してから反対のモードで再 init します:
+
+```bash
+conoha app destroy my-server --app-name myapp          # マーカーとディレクトリを削除
+conoha app init my-server --app-name myapp --no-proxy  # 反対モードで再初期化
+```
+
+同一 VPS 上で `<app-name>` が異なれば proxy / no-proxy を並列に共存させられます。
+
+### 主要フラグ
+
+| フラグ | コマンド | 説明 |
+|---|---|---|
+| `--app-name <name>` | `destroy` / `status` / `logs` / `stop` / `restart` / `env` では常に、`init` / `deploy` / `rollback` では `--no-proxy` と併用する場合に必須 | アプリ名。未指定かつ TTY 有りなら対話プロンプト、非 TTY 環境では指定必須 |
+| `--proxy` / `--no-proxy` | lifecycle コマンド (`list` 以外) | `init` ではマーカーに書き込むモードを選択、それ以外ではマーカーを上書き (不一致ならエラー) |
+| `--slot <id>` | `deploy` | slot ID を固定 (proxy モードのみ意味あり) |
+| `--drain-ms <ms>` | `rollback` | 戻し先の drain 窓を上書き (0 = proxy 既定) |
+| `--follow` / `-f` | `logs` | リアルタイムストリーミング |
+| `--service <name>` | `logs` | 特定サービスのログだけ出す |
+| `--tail <n>` | `logs` | 末尾行数 (既定 100) |
+| `--data-dir <path>` | proxy を叩くコマンド | サーバー側 proxy データディレクトリ (既定 `/var/lib/conoha-proxy`) |
+
+### 環境変数の管理 (no-proxy モード)
+
+デプロイを跨いで永続する環境変数はサーバー側で管理できます。`conoha app env set` は両モードで動作してサーバー側の `/opt/conoha/<app>.env.server` に書き込みますが、**現状 `app env` による値の反映はデプロイ時 `.env` 合成を行う no-proxy モードでのみ有効です** — proxy モードで `app env set` すると `warning: app env has no effect on proxy-mode deployed slots; see #94 for the redesign` が出ます ([#94](https://github.com/crowdy/conoha-cli/issues/94) で再設計予定)。proxy モードでは当面 compose ファイルの `environment:` / `env_file:` でアプリ設定を渡してください。
+
+```bash
+conoha app env set my-server --app-name myapp DATABASE_URL=postgres://...
+conoha app env list my-server --app-name myapp
+conoha app env get my-server --app-name myapp DATABASE_URL
+conoha app env unset my-server --app-name myapp DATABASE_URL
+```
+
+no-proxy デプロイ時の `.env` 合成は **リポジトリの `.env` → サーバー側の `/opt/conoha/<app>.env.server` を追記** の順で行われるため、`conoha app env set` で登録した値が後勝ちで上書きします (proxy モードではこの合成は行われません)。
 
 ## Claude Code スキル
 
