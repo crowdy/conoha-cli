@@ -57,3 +57,17 @@ func TestGenerateEnvListCommand(t *testing.T) {
 		t.Error("missing env file path")
 	}
 }
+
+func TestProxyEnvWarningMessage(t *testing.T) {
+	msg := proxyEnvWarningMessage()
+	for _, want := range []string{
+		"warning",
+		"app env",
+		"proxy-mode",
+		"#94",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("missing %q in %s", want, msg)
+		}
+	}
+}
