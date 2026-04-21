@@ -163,14 +163,14 @@ conoha server rename <server-id-or-name> new-name
 4. Register with the proxy and deploy:
 
    ```bash
-   conoha app init my-server --app-name myapp
-   conoha app deploy my-server --app-name myapp
+   conoha app init my-server
+   conoha app deploy my-server
    ```
 
 5. Rollback (drain window only — instant swap back to the previous slot):
 
    ```bash
-   conoha app rollback my-server --app-name myapp
+   conoha app rollback my-server
    ```
 
 `deploy --slot <id>` pins the slot ID (rule: `[a-z0-9][a-z0-9-]{0,63}`; default is git short SHA or timestamp). Reusing an existing slot ID purges its work dir before re-extracting.
@@ -195,7 +195,7 @@ conoha app logs my-server --app-name myapp --follow
 conoha app destroy my-server --app-name myapp
 ```
 
-`rollback` is not available in no-proxy mode (there is no blue/green swap; invoking it raises a mode-mismatch error). Redeploy a previous commit instead: `git checkout <sha> && conoha app deploy ...`.
+`rollback` is not available in no-proxy mode (there is no blue/green swap; invoking it prints a "rollback is not supported in no-proxy mode" error and exits). To revert, check out the previous commit and redeploy: `git checkout <sha> && conoha app deploy --no-proxy --app-name <app> <server>`.
 
 ### Switching modes
 
@@ -212,8 +212,8 @@ Different `<app-name>`s on the same VPS can run in different modes side by side.
 
 | Flag | Command | Description |
 |---|---|---|
-| `--app-name <name>` | all | App name (required in non-TTY environments) |
-| `--proxy` / `--no-proxy` | every lifecycle cmd except `init` | Override the server marker (mismatch is an error) |
+| `--app-name <name>` | Always on `destroy` / `status` / `logs` / `stop` / `restart` / `env`; required on `init` / `deploy` / `rollback` only when used with `--no-proxy` | App name. Interactively prompted when omitted on a TTY; must be specified in non-TTY environments |
+| `--proxy` / `--no-proxy` | all lifecycle cmds | on `init`, selects the mode to write into the marker; on every other cmd, overrides the marker (mismatch is an error) |
 | `--slot <id>` | `deploy` | Pin the slot ID (proxy mode only) |
 | `--drain-ms <ms>` | `rollback` | Override the rollback drain window (0 = proxy default) |
 | `--follow` / `-f` | `logs` | Stream in real time |
@@ -232,7 +232,7 @@ conoha app env get my-server --app-name myapp DATABASE_URL
 conoha app env unset my-server --app-name myapp DATABASE_URL
 ```
 
-Alternatively, place a local `.env.server` and it is copied to `.env` on deploy automatically.
+At deploy time, `.env` is assembled as **repo-committed `.env` first, then `/opt/conoha/<app>.env.server` (written by `conoha app env set`) appended**, so server-side values win via last-occurrence semantics. Any `.env` you committed in the repo is also picked up by `docker compose`.
 
 ## Claude Code Skill
 
