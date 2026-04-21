@@ -18,6 +18,7 @@ func init() {
 	addAppFlags(destroyCmd)
 	destroyCmd.Flags().Bool("yes", false, "skip confirmation prompt")
 	destroyCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
+	AddModeFlags(destroyCmd)
 }
 
 var destroyCmd = &cobra.Command{
@@ -44,6 +45,13 @@ var destroyCmd = &cobra.Command{
 			}
 		}
 
+		// Resolve mode BEFORE running the destroy script, because the
+		// script removes the .conoha-mode marker as part of rm -rf.
+		mode, modeErr := ResolveMode(cmd, ctx.Client, ctx.AppName)
+		if modeErr != nil && !errors.Is(modeErr, ErrNoMarker) {
+			return modeErr
+		}
+
 		script := generateDestroyScript(ctx.AppName)
 		exitCode, err := internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
 		if err != nil {
@@ -53,18 +61,19 @@ var destroyCmd = &cobra.Command{
 			return fmt.Errorf("destroy exited with code %d", exitCode)
 		}
 
-		// Best-effort: deregister from proxy if conoha.yml is present.
-		dataDir, _ := cmd.Flags().GetString("data-dir")
-		if dataDir == "" {
-			dataDir = proxy.DefaultDataDir
-		}
-		admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: ctx.Client}, proxy.SocketPath(dataDir))
-		pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
-		if pfErr == nil && pf.Validate() == nil {
-			if err := admin.Delete(pf.Name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
-				fmt.Fprintf(os.Stderr, "warning: proxy delete %s: %v\n", pf.Name, err)
-			} else if err == nil {
-				fmt.Fprintf(os.Stderr, "==> Deregistered %q from proxy\n", pf.Name)
+		if mode == ModeProxy {
+			dataDir, _ := cmd.Flags().GetString("data-dir")
+			if dataDir == "" {
+				dataDir = proxy.DefaultDataDir
+			}
+			admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: ctx.Client}, proxy.SocketPath(dataDir))
+			pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
+			if pfErr == nil && pf.Validate() == nil {
+				if err := admin.Delete(pf.Name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
+					fmt.Fprintf(os.Stderr, "warning: proxy delete %s: %v\n", pf.Name, err)
+				} else if err == nil {
+					fmt.Fprintf(os.Stderr, "==> Deregistered %q from proxy\n", pf.Name)
+				}
 			}
 		}
 
