@@ -81,10 +81,10 @@ func runInitProxy(cmd *cobra.Command, serverID string) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Service %q registered. phase=%s tls=%s\n", svc.Name, svc.Phase, svc.TLSStatus)
-	fmt.Fprintf(os.Stderr, "Next: run 'conoha app deploy %s' to push your app.\n", serverID)
 	if err := WriteMarker(sshClient, pf.Name, ModeProxy); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: write mode marker: %v\n", err)
+		return fmt.Errorf("write mode marker: %w", err)
 	}
+	fmt.Fprintf(os.Stderr, "Next: run 'conoha app deploy %s' to push your app.\n", serverID)
 	return nil
 }
 
