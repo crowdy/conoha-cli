@@ -24,6 +24,9 @@ func TestBuildNoProxyDeployCmd(t *testing.T) {
 		"docker compose -p myapp",
 		"-f 'compose.yml'",
 		"up -d --build",
+		// v0.1.x env.server merge must happen before compose up (spec §3.2).
+		"/opt/conoha/myapp.env.server",
+		".env.merged",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)

@@ -112,13 +112,23 @@ func buildNoProxyUploadCmd(workDir string) string {
 
 // buildNoProxyDeployCmd brings the flat-layout compose project up in place.
 // The compose project name equals the app name (no slot suffix).
+// Before compose up, merges /opt/conoha/<app>.env.server (written by
+// `conoha app env set`) into <workDir>/.env so values set out-of-band
+// are available for compose interpolation. User's repo-level .env
+// (if any) takes precedence via last-occurrence semantics.
 // Caller MUST pre-validate app via internalssh.ValidateAppName.
 // composeFile is defensively single-quoted — today it comes from the
 // ResolveComposeFile whitelist, but quoting hardens against future callers.
 func buildNoProxyDeployCmd(workDir, app, composeFile string) string {
+	envServer := fmt.Sprintf("/opt/conoha/%s.env.server", app)
 	return fmt.Sprintf(
-		"cd '%s' && docker compose -p %s -f '%s' up -d --build",
-		workDir, app, composeFile)
+		"cd '%s' && { "+
+			"if [ -s '%s' ]; then "+
+			"  touch .env; "+
+			"  { cat '%s'; printf '\\n'; cat .env; } > .env.merged && mv .env.merged .env; "+
+			"fi; "+
+			"} && docker compose -p %s -f '%s' up -d --build",
+		workDir, envServer, envServer, app, composeFile)
 }
 
 func runProxyDeploy(cmd *cobra.Command, serverID string) error {

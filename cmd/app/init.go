@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -64,6 +65,13 @@ func runInitProxy(cmd *cobra.Command, serverID string) error {
 	}
 	defer func() { _ = sshClient.Close() }()
 
+	// Reject implicit mode switch — user must `app destroy` first.
+	if existing, err := ReadMarker(sshClient, pf.Name); err == nil && existing != ModeProxy {
+		return formatModeConflictError(pf.Name, existing, ModeProxy)
+	} else if err != nil && !errors.Is(err, ErrNoMarker) {
+		return err
+	}
+
 	dataDir, _ := cmd.Flags().GetString("data-dir")
 	client := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
 
@@ -101,6 +109,13 @@ func runInitNoProxy(cmd *cobra.Command, serverID string) error {
 		return err
 	}
 	defer func() { _ = sshClient.Close() }()
+
+	// Reject implicit mode switch — user must `app destroy` first.
+	if existing, err := ReadMarker(sshClient, appName); err == nil && existing != ModeNoProxy {
+		return formatModeConflictError(appName, existing, ModeNoProxy)
+	} else if err != nil && !errors.Is(err, ErrNoMarker) {
+		return err
+	}
 
 	// Verify docker is present.
 	code, err := internalssh.RunCommand(sshClient, "command -v docker >/dev/null 2>&1", os.Stderr, os.Stderr)
