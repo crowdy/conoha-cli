@@ -117,30 +117,39 @@ conoha server rename <server-id-or-name> new-name
 | `conoha config` | CLI 설정 관리 (show / set / path) |
 | `conoha skill` | Claude Code 스킬 관리 (install / update / remove) |
 
-### 두 가지 배포 모드
+## 앱 배포
 
-`conoha app`은 동일 VPS에서 공존 가능한 두 가지 모드를 제공합니다:
+`conoha app` 은 같은 VPS 에서 공존할 수 있는 두 가지 배포 모드를 제공합니다. `conoha app init` 시점에 서버 측 마커 (`/opt/conoha/<name>/.conoha-mode`) 가 기록되고, 이후의 `deploy` / `status` / `logs` / `stop` / `restart` / `destroy` / `rollback` 은 자동으로 그 모드로 동작합니다. `--proxy` / `--no-proxy` 플래그는 마커를 덮어쓰되, 불일치 시 에러가 납니다 (모드 전환은 `destroy` → 재 `init`).
 
-| 모드 | 용도 | 레이아웃 |
-|---|---|---|
-| **proxy** (기본) | 도메인 + TLS가 있는 공개 앱 | `/opt/conoha/<name>/<slot>/` 아래의 blue/green 슬롯 (conoha-proxy 관리) |
-| **no-proxy** (`--no-proxy`) | 테스트, 내부/개발 VPS, 비 HTTP 서비스, 취미 앱 | `/opt/conoha/<name>/` 플랫 (일반 `docker compose up`) |
+| 모드 | 기본 | 용도 | 레이아웃 | `conoha.yml` | `conoha proxy boot` | DNS / TLS |
+|---|:-:|---|---|:-:|:-:|:-:|
+| **proxy** (blue/green) | ✓ | 도메인 + Let's Encrypt TLS 공개 앱 | `/opt/conoha/<name>/<slot>/` blue/green 슬롯 | 필수 | 필수 | 필수 |
+| **no-proxy** (flat) |  | 테스트, 사내/개발 VPS, 비 HTTP 서비스, 취미 앱 | `/opt/conoha/<name>/` 평면 단일 디렉터리 | 불필요 | 불필요 | 불필요 |
 
-`conoha app init --no-proxy --app-name <name> <server>`로 초기화한 뒤 `conoha app deploy --no-proxy --app-name <name> <server>`로 배포합니다. no-proxy 모드에서는 `conoha.yml`이 필요 없습니다.
+### proxy 모드 (기본): conoha-proxy 기반 blue/green
 
-## 앱 배포 (conoha-proxy 기반 blue/green)
+[conoha-proxy](https://github.com/crowdy/conoha-proxy) 가 Let's Encrypt HTTPS, Host 헤더 라우팅, drain 윈도우 내 즉시 롤백을 제공합니다.
 
-v0.2.0 부터 `conoha app deploy` 는 [conoha-proxy](https://github.com/crowdy/conoha-proxy) 를 경유한 blue/green 배포로 통일되었습니다. Let's Encrypt HTTPS 자동 발급, Host 헤더 라우팅, drain 윈도우 내 즉시 롤백을 제공합니다. 초기 셋업 순서:
-
-1. 레포 루트에 `conoha.yml` 생성:
+1. 리포지토리 루트에 `conoha.yml` 작성:
 
    ```yaml
-   name: myapp
+   name: myapp                   # DNS-1123 라벨 (소문자 영숫자 + 하이픈, 1-63 자)
    hosts:
-     - app.example.com
+     - app.example.com           # 하나 이상, 중복 불가
    web:
-     service: web
-     port: 8080
+     service: web                # compose 파일의 서비스명과 일치해야 함
+     port: 8080                  # 컨테이너 listen 포트 (1-65535)
+   # --- 선택 ---
+   compose_file: docker-compose.yml   # 생략 시 conoha-docker-compose.yml → docker-compose.yml → compose.yml 순으로 자동 검출
+   accessories: [db, redis]           # web 과 같은 네트워크에 붙는 부속 서비스
+   health:
+     path: /healthz
+     interval_ms: 1000
+     timeout_ms: 500
+     healthy_threshold: 2
+     unhealthy_threshold: 3
+   deploy:
+     drain_ms: 5000                   # 구 슬롯을 내릴 때까지의 drain 윈도우 (ms)
    ```
 
 2. VPS 에 프록시 컨테이너 부팅:
@@ -149,25 +158,81 @@ v0.2.0 부터 `conoha app deploy` 는 [conoha-proxy](https://github.com/crowdy/c
    conoha proxy boot my-server --acme-email ops@example.com
    ```
 
-3. DNS A 레코드를 VPS 로 향하게 설정 (Let's Encrypt HTTP-01 검증에 필요).
+3. DNS A 레코드를 VPS 로 향하게 하기 (Let's Encrypt HTTP-01 검증에 필요).
 
-4. proxy 에 앱 등록:
-
-   ```bash
-   conoha app init my-server
-   ```
-
-5. 배포:
+4. 프록시에 앱을 등록하고 배포:
 
    ```bash
-   conoha app deploy my-server
+   conoha app init my-server --app-name myapp
+   conoha app deploy my-server --app-name myapp
    ```
 
-롤백 (drain 윈도우 내에만 유효):
+5. 롤백 (drain 윈도우 내에서만, 이전 슬롯으로 즉시 전환):
+
+   ```bash
+   conoha app rollback my-server --app-name myapp
+   ```
+
+`deploy --slot <id>` 로 슬롯 ID 를 고정할 수 있습니다 (규칙: `[a-z0-9][a-z0-9-]{0,63}`, 기본값은 git short SHA 또는 timestamp). 기존 슬롯명을 재사용하면 작업 디렉터리를 정리한 뒤 재전개합니다.
+
+### no-proxy 모드: 평면 단일 슬롯
+
+`conoha.yml` / proxy / DNS 없이도 가능한 최단 경로. `docker-compose.yml` 만 있으면 됩니다. SSH 로 `docker compose up -d --build` 를 실행하는 것과 동등하며, TLS / Host 기반 라우팅이 필요 없는 용도 (테스트, 사내 도구, 비 HTTP 서비스, 취미 배포) 에 적합합니다.
 
 ```bash
-conoha app rollback my-server
+# 초기화 (Docker / Compose 설치만 수행, proxy 없음)
+conoha app init my-server --app-name myapp --no-proxy
+
+# 배포 (현재 디렉터리 tar → 업로드 → /opt/conoha/myapp/ 에 전개 → docker compose up -d --build)
+conoha app deploy my-server --app-name myapp --no-proxy
 ```
+
+이후의 `status` / `logs` / `stop` / `restart` / `destroy` 는 서버 마커에서 자동 판별되므로 `--no-proxy` 를 반복할 필요가 없습니다 (다시 넘겨도 에러는 아니며 no-op):
+
+```bash
+conoha app status my-server --app-name myapp
+conoha app logs my-server --app-name myapp --follow
+conoha app destroy my-server --app-name myapp
+```
+
+no-proxy 모드에는 blue/green 스왑이 없으므로 `rollback` 은 사용할 수 없습니다 (호출 시 모드 불일치 에러). 이전 커밋으로 되돌리려면 `git checkout <sha> && conoha app deploy ...` 로 재배포하세요.
+
+### 모드 전환
+
+기존 앱의 모드를 바꾸려면 한 번 제거한 뒤 반대 모드로 재 init 합니다:
+
+```bash
+conoha app destroy my-server --app-name myapp            # 마커와 작업 디렉터리 제거
+conoha app init my-server --app-name myapp --no-proxy    # 반대 모드로 재초기화
+```
+
+같은 VPS 위에서도 `<app-name>` 이 다르면 proxy / no-proxy 를 나란히 공존시킬 수 있습니다.
+
+### 주요 플래그
+
+| 플래그 | 명령 | 설명 |
+|---|---|---|
+| `--app-name <name>` | 전체 | 앱 이름 (비 TTY 환경에서는 필수) |
+| `--proxy` / `--no-proxy` | `init` 이외 lifecycle 전체 | 마커를 덮어쓰고 모드 강제 (불일치 시 에러) |
+| `--slot <id>` | `deploy` | 슬롯 ID 고정 (proxy 모드에서만 의미) |
+| `--drain-ms <ms>` | `rollback` | 롤백 drain 윈도우 오버라이드 (0 = proxy 기본값) |
+| `--follow` / `-f` | `logs` | 실시간 스트리밍 |
+| `--service <name>` | `logs` | 특정 서비스만 |
+| `--tail <n>` | `logs` | 출력 줄 수 (기본 100) |
+| `--data-dir <path>` | proxy 를 호출하는 명령 | 서버 측 proxy 데이터 디렉터리 (기본 `/var/lib/conoha-proxy`) |
+
+### 환경 변수 관리
+
+배포를 가로질러 유지되는 환경 변수는 서버 측에서 관리합니다 (두 모드 공통):
+
+```bash
+conoha app env set my-server --app-name myapp DATABASE_URL=postgres://...
+conoha app env list my-server --app-name myapp
+conoha app env get my-server --app-name myapp DATABASE_URL
+conoha app env unset my-server --app-name myapp DATABASE_URL
+```
+
+또는 로컬에 `.env.server` 를 두면 배포 시 자동으로 `.env` 로 복사됩니다.
 
 ## Claude Code 스킬
 
