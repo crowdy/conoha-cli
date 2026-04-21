@@ -158,7 +158,9 @@ conoha server rename <server-id-or-name> new-name
    conoha proxy boot my-server --acme-email ops@example.com
    ```
 
-3. DNS A 레코드를 VPS 로 향하게 하기 (Let's Encrypt HTTP-01 검증에 필요).
+   이 단계를 건너뛰고 바로 `app init` 으로 넘어가면 Admin API 소켓에 닿지 못해 에러로 중단됩니다 (프록시 컨테이너가 아직 떠 있지 않음).
+
+3. DNS A 레코드를 VPS 로 향하게 하기 (Let's Encrypt HTTP-01 검증에 필요). DNS 는 `app init` 이 호스트를 등록하는 시점까지 해소 가능해야 합니다 — 설정 전에 진행해도 `app` 계층 배포 자체는 성공하지만, ACME 가 성공할 때까지는 호스트명에 유효하지 않은 인증서가 응답됩니다.
 
 4. 프록시에 앱을 등록하고 배포:
 
@@ -173,7 +175,7 @@ conoha server rename <server-id-or-name> new-name
    conoha app rollback my-server
    ```
 
-`deploy --slot <id>` 로 슬롯 ID 를 고정할 수 있습니다 (규칙: `[a-z0-9][a-z0-9-]{0,63}`, 기본값은 git short SHA 또는 timestamp). 기존 슬롯명을 재사용하면 작업 디렉터리를 정리한 뒤 재전개합니다.
+`deploy --slot <id>` 로 슬롯 ID 를 고정할 수 있습니다 (규칙: `[a-z0-9][a-z0-9-]{0,63}`, 기본값은 git short SHA 또는 timestamp). 기존 슬롯명을 명시적으로 재사용하면 작업 디렉터리를 정리한 뒤 재전개합니다. `--slot` 을 생략했을 때 기본값이 기존 compose 프로젝트와 충돌하면 (예: drain 중인 이전 슬롯) CLI 가 자동으로 `-2` / `-3` 접미사를 붙여 충돌을 회피하므로, 충돌이 파괴적으로 작용하지 않습니다.
 
 ### no-proxy 모드: 평면 단일 슬롯
 
