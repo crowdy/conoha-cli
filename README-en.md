@@ -117,6 +117,17 @@ conoha server rename <server-id-or-name> new-name
 | `conoha config` | CLI configuration (show / set / path) |
 | `conoha skill` | Claude Code skill management (install / update / remove) |
 
+### Two deploy modes
+
+`conoha app` supports two modes that can coexist on the same VPS:
+
+| Mode | When to use | Layout |
+|---|---|---|
+| **proxy** (default) | Public app with a domain and TLS | Blue/green slots under `/opt/conoha/<name>/<slot>/` managed via conoha-proxy |
+| **no-proxy** (`--no-proxy`) | Testing, internal/dev VPS, non-HTTP services, hobby apps | Flat `/opt/conoha/<name>/` with plain `docker compose up` |
+
+Initialize with `conoha app init --no-proxy --app-name <name> <server>`, then `conoha app deploy --no-proxy --app-name <name> <server>`. No `conoha.yml` required in no-proxy mode.
+
 ## App deploy (blue/green via conoha-proxy)
 
 Since v0.2.0, `conoha app deploy` uses [conoha-proxy](https://github.com/crowdy/conoha-proxy) for blue/green deploys: automatic Let's Encrypt HTTPS, Host-header routing, and instant rollback inside the drain window. First-time setup:

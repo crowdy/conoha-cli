@@ -159,6 +159,17 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
 
 詳細は [docs/startup-script.md](docs/startup-script.md) を参照してください。
 
+### 2 つのデプロイモード
+
+`conoha app` は同一 VPS 上で共存可能な 2 つのモードを提供します:
+
+| モード | 用途 | レイアウト |
+|---|---|---|
+| **proxy** (既定) | ドメイン + TLS の公開アプリ | `/opt/conoha/<name>/<slot>/` の blue/green スロット (conoha-proxy 管理) |
+| **no-proxy** (`--no-proxy`) | テスト、内部・開発 VPS、非 HTTP サービス、ホビーアプリ | `/opt/conoha/<name>/` フラット (単純な `docker compose up`) |
+
+`conoha app init --no-proxy --app-name <name> <server>` で初期化し、`conoha app deploy --no-proxy --app-name <name> <server>` でデプロイします。no-proxy モードでは `conoha.yml` は不要です。
+
 ## アプリデプロイ（conoha-proxy 経由 blue/green）
 
 v0.2.0 から `conoha app deploy` は [conoha-proxy](https://github.com/crowdy/conoha-proxy) 経由の blue/green デプロイに統一されました。Let's Encrypt による HTTPS、Host ヘッダールーティング、drain 窓内での即時ロールバックを提供します。初回セットアップの流れ：
