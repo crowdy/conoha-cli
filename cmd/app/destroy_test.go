@@ -13,3 +13,12 @@ func TestDestroyCmd_HasYesFlag(t *testing.T) {
 		t.Errorf("--yes default should be false, got %s", f.DefValue)
 	}
 }
+
+func TestDestroyCmd_HasModeFlags(t *testing.T) {
+	if destroyCmd.Flags().Lookup("proxy") == nil {
+		t.Error("destroy should have --proxy flag")
+	}
+	if destroyCmd.Flags().Lookup("no-proxy") == nil {
+		t.Error("destroy should have --no-proxy flag")
+	}
+}

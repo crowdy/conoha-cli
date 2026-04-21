@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -12,6 +13,7 @@ import (
 
 func init() {
 	addAppFlags(stopCmd)
+	AddModeFlags(stopCmd)
 }
 
 var stopCmd = &cobra.Command{
@@ -25,6 +27,30 @@ var stopCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
+		// Resolve mode + slot before the prompt so flag/marker conflicts or
+		// "not deployed" errors abort without asking the user to confirm (I3).
+		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName)
+		if err != nil {
+			if errors.Is(err, ErrNoMarker) {
+				return fmt.Errorf("app %q has not been initialized on this server", ctx.AppName)
+			}
+			return err
+		}
+
+		var composeCmd string
+		if mode == ModeProxy {
+			slot, err := ReadCurrentSlot(ctx.Client, ctx.AppName)
+			if err != nil {
+				return err
+			}
+			if slot == "" {
+				return fmt.Errorf("app %q has not been deployed on this server", ctx.AppName)
+			}
+			composeCmd = buildStopCmdForProxy(ctx.AppName, slot)
+		} else {
+			composeCmd = buildStopCmdForNoProxy(ctx.AppName)
+		}
+
 		ok, err := prompt.Confirm(fmt.Sprintf("Stop app %q on %s?", ctx.AppName, ctx.Server.Name))
 		if err != nil {
 			return err
@@ -34,9 +60,8 @@ var stopCmd = &cobra.Command{
 			return nil
 		}
 
-		workDir := "/opt/conoha/" + ctx.AppName
 		fmt.Fprintf(os.Stderr, "Stopping app %q on %s...\n", ctx.AppName, ctx.Server.Name)
-		exitCode, err := internalssh.RunCommand(ctx.Client, fmt.Sprintf("cd %s && docker compose stop && docker compose ps", workDir), os.Stdout, os.Stderr)
+		exitCode, err := internalssh.RunCommand(ctx.Client, composeCmd, os.Stdout, os.Stderr)
 		if err != nil {
 			return fmt.Errorf("stop failed: %w", err)
 		}
@@ -45,4 +70,12 @@ var stopCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func buildStopCmdForProxy(app, slot string) string {
+	return fmt.Sprintf("docker compose -p %s-%s stop && docker compose -p %s-%s ps", app, slot, app, slot)
+}
+
+func buildStopCmdForNoProxy(app string) string {
+	return fmt.Sprintf("cd /opt/conoha/%s && docker compose stop && docker compose ps", app)
 }

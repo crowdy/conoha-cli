@@ -117,6 +117,17 @@ conoha server rename <server-id-or-name> new-name
 | `conoha config` | CLI 설정 관리 (show / set / path) |
 | `conoha skill` | Claude Code 스킬 관리 (install / update / remove) |
 
+### 두 가지 배포 모드
+
+`conoha app`은 동일 VPS에서 공존 가능한 두 가지 모드를 제공합니다:
+
+| 모드 | 용도 | 레이아웃 |
+|---|---|---|
+| **proxy** (기본) | 도메인 + TLS가 있는 공개 앱 | `/opt/conoha/<name>/<slot>/` 아래의 blue/green 슬롯 (conoha-proxy 관리) |
+| **no-proxy** (`--no-proxy`) | 테스트, 내부/개발 VPS, 비 HTTP 서비스, 취미 앱 | `/opt/conoha/<name>/` 플랫 (일반 `docker compose up`) |
+
+`conoha app init --no-proxy --app-name <name> <server>`로 초기화한 뒤 `conoha app deploy --no-proxy --app-name <name> <server>`로 배포합니다. no-proxy 모드에서는 `conoha.yml`이 필요 없습니다.
+
 ## 앱 배포 (conoha-proxy 기반 blue/green)
 
 v0.2.0 부터 `conoha app deploy` 는 [conoha-proxy](https://github.com/crowdy/conoha-proxy) 를 경유한 blue/green 배포로 통일되었습니다. Let's Encrypt HTTPS 자동 발급, Host 헤더 라우팅, drain 윈도우 내 즉시 롤백을 제공합니다. 초기 셋업 순서:

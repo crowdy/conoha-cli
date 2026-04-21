@@ -16,6 +16,13 @@ func init() {
 	addAppFlags(rollbackCmd)
 	rollbackCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
 	rollbackCmd.Flags().Int("drain-ms", 0, "drain window for the swapped-back target (0 = proxy default)")
+	AddModeFlags(rollbackCmd)
+}
+
+func noProxyRollbackError(app string) error {
+	return fmt.Errorf(
+		"rollback is not supported in no-proxy mode. Deploy a previous revision instead: "+
+			"git checkout <rev> && conoha app deploy --no-proxy --app-name %s <server>", app)
 }
 
 var rollbackCmd = &cobra.Command{
@@ -23,6 +30,14 @@ var rollbackCmd = &cobra.Command{
 	Short: "Swap back to the previous target (within the drain window)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		noProxyFlag, _ := cmd.Flags().GetBool("no-proxy")
+		if noProxyFlag {
+			appName, _ := cmd.Flags().GetString("app-name")
+			if appName == "" {
+				return fmt.Errorf("--app-name is required with --no-proxy")
+			}
+			return noProxyRollbackError(appName)
+		}
 		pf, err := config.LoadProjectFile(config.ProjectFileName)
 		if err != nil {
 			return err
@@ -36,9 +51,19 @@ var rollbackCmd = &cobra.Command{
 		}
 		defer func() { _ = sshClient.Close() }()
 
+		mode, err := ResolveMode(cmd, sshClient, pf.Name)
+		if err != nil {
+			if errors.Is(err, ErrNoMarker) {
+				return fmt.Errorf("app %q not initialized on this server — run 'conoha app init' first", pf.Name)
+			}
+			return err
+		}
+		if mode == ModeNoProxy {
+			return noProxyRollbackError(pf.Name)
+		}
+
 		dataDir, _ := cmd.Flags().GetString("data-dir")
 		admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
-
 		drainMs, _ := cmd.Flags().GetInt("drain-ms")
 		fmt.Fprintf(os.Stderr, "==> Rolling back %q on %s (%s)\n", pf.Name, s.Name, ip)
 		updated, err := admin.Rollback(pf.Name, drainMs)

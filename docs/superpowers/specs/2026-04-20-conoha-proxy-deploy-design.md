@@ -4,6 +4,8 @@
 **Status**: Approved
 **Owner**: t-kim
 
+> **Update 2026-04-21:** A `--no-proxy` mode was added as a coexisting alternative path. See `docs/superpowers/specs/2026-04-21-no-proxy-mode-design.md`.
+
 ## 1. 背景と目的
 
 現行の `conoha app deploy` は「tar 転送 → `docker compose up -d --build`」の単一スロット構成で、TLS / ドメインルーティング / ゼロダウンタイム切替を持たない。同リポジトリ群に存在する `../conoha-proxy` (ConoHa VPS 向け Go 製リバースプロキシ) が、Let's Encrypt 自動 TLS・Host ヘッダールーティング・blue/green スワップ (drain ウィンドウ) を Admin API として提供しているため、それに統合する。

@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/proxy"
 	"github.com/crowdy/conoha-cli/internal/config"
+	"github.com/crowdy/conoha-cli/internal/model"
 	proxypkg "github.com/crowdy/conoha-cli/internal/proxy"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
@@ -19,6 +21,7 @@ func init() {
 	addAppFlags(deployCmd)
 	deployCmd.Flags().String("data-dir", proxy.DefaultDataDir, "proxy data directory on the server")
 	deployCmd.Flags().String("slot", "", "override slot ID (default: git short SHA or timestamp). Must match [a-z0-9][a-z0-9-]{0,63}. Reusing an existing slot removes its work dir before re-extracting; pending drain-teardowns for the same slot will auto-skip")
+	AddModeFlags(deployCmd)
 }
 
 var deployCmd = &cobra.Command{
@@ -29,11 +32,114 @@ in a new compose slot on a dynamic port, then ask conoha-proxy to probe and
 swap. The previous slot is torn down after the drain window.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDeploy(cmd, args[0])
+		return runDeployDispatch(cmd, args[0])
 	},
 }
 
-func runDeploy(cmd *cobra.Command, serverID string) error {
+// runDeployDispatch resolves mode (flag override + server marker) and calls
+// the proxy or no-proxy deploy path.
+func runDeployDispatch(cmd *cobra.Command, serverID string) error {
+	noProxyFlag, _ := cmd.Flags().GetBool("no-proxy")
+
+	if noProxyFlag {
+		appName, _ := cmd.Flags().GetString("app-name")
+		if appName == "" {
+			return fmt.Errorf("--app-name is required with --no-proxy")
+		}
+		if err := internalssh.ValidateAppName(appName); err != nil {
+			return err
+		}
+		sshClient, s, ip, err := connectToServer(cmd, serverID)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = sshClient.Close() }()
+		got, err := ReadMarker(sshClient, appName)
+		if err != nil {
+			if errors.Is(err, ErrNoMarker) {
+				return fmt.Errorf("app %q not initialized on this server — run 'conoha app init --no-proxy --app-name %s %s' first", appName, appName, serverID)
+			}
+			return err
+		}
+		if got != ModeNoProxy {
+			return formatModeConflictError(appName, got, ModeNoProxy)
+		}
+		return runNoProxyDeploy(cmd, sshClient, s, ip, appName)
+	}
+
+	return runProxyDeploy(cmd, serverID)
+}
+
+// runNoProxyDeploy uploads the working tree to /opt/conoha/<app>/ and runs
+// 'docker compose -p <app> up -d --build'. No proxy upsert, no slot.
+func runNoProxyDeploy(cmd *cobra.Command, sshClient *ssh.Client, s *model.Server, ip, appName string) error {
+	fmt.Fprintf(os.Stderr, "==> Deploying %q to %s (%s) in no-proxy mode\n", appName, s.Name, ip)
+
+	patterns, err := loadIgnorePatterns(".")
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := createTarGz(".", patterns, &buf); err != nil {
+		return fmt.Errorf("create archive: %w", err)
+	}
+	workDir := "/opt/conoha/" + appName
+	if err := runRemote(sshClient, buildNoProxyUploadCmd(workDir), &buf); err != nil {
+		return fmt.Errorf("upload: %w", err)
+	}
+
+	pf := &config.ProjectFile{}
+	composeFile, err := pf.ResolveComposeFile(".")
+	if err != nil {
+		return err
+	}
+
+	if err := runRemote(sshClient, buildNoProxyDeployCmd(workDir, appName, composeFile), nil); err != nil {
+		return fmt.Errorf("compose up: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "Deploy complete.")
+	return nil
+}
+
+// buildNoProxyUploadCmd extracts the incoming tar archive into the app work
+// directory. It removes the previous deploy's merged .env (if any) before
+// extracting so the tar becomes authoritative for repo-level .env content;
+// the deploy command then overlays /opt/conoha/<app>.env.server on top.
+// Other sibling files (e.g. named-volume binds) are preserved.
+// Caller MUST pre-validate app via internalssh.ValidateAppName.
+func buildNoProxyUploadCmd(workDir string) string {
+	return fmt.Sprintf(
+		"mkdir -p '%[1]s' && rm -f '%[1]s/.env' && tar xzf - -C '%[1]s'",
+		workDir)
+}
+
+// buildNoProxyDeployCmd brings the flat-layout compose project up in place.
+// The compose project name equals the app name (no slot suffix).
+//
+// Env merge (v0.1.x parity, spec §3.6): appends /opt/conoha/<app>.env.server
+// (written by `conoha app env set`) to <workDir>/.env so server-side values
+// win over repo-level ones via last-occurrence semantics. This is the
+// expected precedence for runtime-secret override.
+//
+// Because buildNoProxyUploadCmd cleared any prior merged .env before tar
+// extraction, each deploy starts from the repo's committed .env (if any)
+// and re-overlays the current .env.server. `app env unset` therefore takes
+// effect on the next deploy.
+//
+// Caller MUST pre-validate app via internalssh.ValidateAppName.
+// composeFile is defensively single-quoted — today it comes from the
+// ResolveComposeFile whitelist, but quoting hardens against future callers.
+func buildNoProxyDeployCmd(workDir, app, composeFile string) string {
+	envServer := fmt.Sprintf("/opt/conoha/%s.env.server", app)
+	return fmt.Sprintf(
+		"cd '%s' && { "+
+			"touch .env; "+
+			"if [ -s '%s' ]; then printf '\\n' >> .env && cat '%s' >> .env; fi; "+
+			"} && docker compose -p %s -f '%s' up -d --build",
+		workDir, envServer, envServer, app, composeFile)
+}
+
+func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 	pf, err := config.LoadProjectFile(config.ProjectFileName)
 	if err != nil {
 		return err
@@ -55,12 +161,22 @@ func runDeploy(cmd *cobra.Command, serverID string) error {
 	}
 	defer func() { _ = sshClient.Close() }()
 
+	// Mode dispatch parity: reject if this app was initialized in no-proxy mode.
+	// Absent marker falls through to the existing "service not found on proxy" path.
+	got, markerErr := ReadMarker(sshClient, pf.Name)
+	if markerErr != nil && !errors.Is(markerErr, ErrNoMarker) {
+		return markerErr
+	}
+	if markerErr == nil && got == ModeNoProxy {
+		return formatModeConflictError(pf.Name, got, ModeProxy)
+	}
+
 	dataDir, _ := cmd.Flags().GetString("data-dir")
 	admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
 
 	// Service must exist — init registers it. Missing = user skipped init.
 	if _, err := admin.Get(pf.Name); err != nil {
-		return fmt.Errorf("service %q not found on proxy — run 'conoha app init %s' first: %w", pf.Name, serverID, err)
+		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init %s' first: %w", pf.Name, serverID, err)
 	}
 
 	slotOverride, _ := cmd.Flags().GetString("slot")

@@ -11,6 +11,21 @@ import (
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
+// proxyEnvWarningMessage returns the one-line warning emitted when `app env`
+// is run against a proxy-mode app. See #94 for the planned redesign.
+func proxyEnvWarningMessage() string {
+	return "warning: app env has no effect on proxy-mode deployed slots; see #94 for the redesign\n"
+}
+
+// maybeWarnProxyEnvMode emits the proxy-mode warning to stderr once per env
+// subcommand invocation. Silent on no-proxy or when marker lookup fails.
+func maybeWarnProxyEnvMode(ctx *appContext) {
+	m, err := ReadMarker(ctx.Client, ctx.AppName)
+	if err == nil && m == ModeProxy {
+		fmt.Fprint(os.Stderr, proxyEnvWarningMessage())
+	}
+}
+
 var envCmd = &cobra.Command{
 	Use:   "env",
 	Short: "Manage app environment variables",
@@ -38,6 +53,7 @@ var envSetCmd = &cobra.Command{
 			return err
 		}
 		defer func() { _ = ctx.Client.Close() }()
+		maybeWarnProxyEnvMode(ctx)
 
 		env := make(map[string]string)
 		for _, arg := range args[1:] {
@@ -104,6 +120,7 @@ var envGetCmd = &cobra.Command{
 			return err
 		}
 		defer func() { _ = ctx.Client.Close() }()
+		maybeWarnProxyEnvMode(ctx)
 
 		key := args[1]
 		if err := internalssh.ValidateEnvKey(key); err != nil {
@@ -138,6 +155,7 @@ var envListCmd = &cobra.Command{
 			return err
 		}
 		defer func() { _ = ctx.Client.Close() }()
+		maybeWarnProxyEnvMode(ctx)
 
 		command := generateEnvListCommand(ctx.AppName)
 		_, err = internalssh.RunCommand(ctx.Client, command, os.Stdout, os.Stderr)
@@ -162,6 +180,7 @@ var envUnsetCmd = &cobra.Command{
 			return err
 		}
 		defer func() { _ = ctx.Client.Close() }()
+		maybeWarnProxyEnvMode(ctx)
 
 		keys := args[1:]
 		for _, k := range keys {

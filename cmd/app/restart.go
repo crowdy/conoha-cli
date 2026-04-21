@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -11,6 +12,7 @@ import (
 
 func init() {
 	addAppFlags(restartCmd)
+	AddModeFlags(restartCmd)
 }
 
 var restartCmd = &cobra.Command{
@@ -24,9 +26,30 @@ var restartCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
-		workDir := "/opt/conoha/" + ctx.AppName
+		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName)
+		if err != nil {
+			if errors.Is(err, ErrNoMarker) {
+				return fmt.Errorf("app %q has not been initialized on this server", ctx.AppName)
+			}
+			return err
+		}
+
+		var composeCmd string
+		if mode == ModeProxy {
+			slot, err := ReadCurrentSlot(ctx.Client, ctx.AppName)
+			if err != nil {
+				return err
+			}
+			if slot == "" {
+				return fmt.Errorf("app %q has not been deployed on this server", ctx.AppName)
+			}
+			composeCmd = buildRestartCmdForProxy(ctx.AppName, slot)
+		} else {
+			composeCmd = buildRestartCmdForNoProxy(ctx.AppName)
+		}
+
 		fmt.Fprintf(os.Stderr, "Restarting app %q on %s...\n", ctx.AppName, ctx.Server.Name)
-		exitCode, err := internalssh.RunCommand(ctx.Client, fmt.Sprintf("cd %s && docker compose restart && docker compose ps", workDir), os.Stdout, os.Stderr)
+		exitCode, err := internalssh.RunCommand(ctx.Client, composeCmd, os.Stdout, os.Stderr)
 		if err != nil {
 			return fmt.Errorf("restart failed: %w", err)
 		}
@@ -35,4 +58,12 @@ var restartCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func buildRestartCmdForProxy(app, slot string) string {
+	return fmt.Sprintf("docker compose -p %s-%s restart && docker compose -p %s-%s ps", app, slot, app, slot)
+}
+
+func buildRestartCmdForNoProxy(app string) string {
+	return fmt.Sprintf("cd /opt/conoha/%s && docker compose restart && docker compose ps", app)
 }
