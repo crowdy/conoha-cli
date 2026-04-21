@@ -149,7 +149,7 @@ conoha server rename <server-id-or-name> new-name
      healthy_threshold: 2
      unhealthy_threshold: 3
    deploy:
-     drain_ms: 5000                   # drain window before tearing down the old slot (milliseconds)
+     drain_ms: 5000                   # drain window before tearing down the old slot (milliseconds; default 30000 if omitted)
    ```
 
 2. Boot the proxy container on the VPS:
@@ -180,7 +180,7 @@ conoha server rename <server-id-or-name> new-name
 Shortest path: no `conoha.yml`, no proxy, no DNS required. A `docker-compose.yml` is enough. This is equivalent to `docker compose up -d --build` over SSH and is the right choice when you do not need TLS or Host-based routing (testing, internal tools, non-HTTP services, hobby deployments).
 
 ```bash
-# Initialize (installs Docker / Compose only; proxy is not required)
+# Initialize (verifies Docker / Compose are installed and writes the marker; does not install anything — pre-install via e.g. `conoha server create --user-data ./install-docker.sh`)
 conoha app init my-server --app-name myapp --no-proxy
 
 # Deploy (tar current dir → upload → extract to /opt/conoha/myapp/ → docker compose up -d --build)
@@ -213,7 +213,7 @@ Different `<app-name>`s on the same VPS can run in different modes side by side.
 | Flag | Command | Description |
 |---|---|---|
 | `--app-name <name>` | Always on `destroy` / `status` / `logs` / `stop` / `restart` / `env`; required on `init` / `deploy` / `rollback` only when used with `--no-proxy` | App name. Interactively prompted when omitted on a TTY; must be specified in non-TTY environments |
-| `--proxy` / `--no-proxy` | all lifecycle cmds | on `init`, selects the mode to write into the marker; on every other cmd, overrides the marker (mismatch is an error) |
+| `--proxy` / `--no-proxy` | lifecycle cmds (not `list`) | on `init`, selects the mode to write into the marker; on every other cmd, overrides the marker (mismatch is an error) |
 | `--slot <id>` | `deploy` | Pin the slot ID (proxy mode only) |
 | `--drain-ms <ms>` | `rollback` | Override the rollback drain window (0 = proxy default) |
 | `--follow` / `-f` | `logs` | Stream in real time |
@@ -221,9 +221,9 @@ Different `<app-name>`s on the same VPS can run in different modes side by side.
 | `--tail <n>` | `logs` | Line count (default 100) |
 | `--data-dir <path>` | proxy-facing cmds | Server-side proxy data dir (default `/var/lib/conoha-proxy`) |
 
-### Environment variables
+### Environment variables (no-proxy mode)
 
-Server-side env vars persist across deploys (both modes):
+Server-side env vars persist across deploys. `conoha app env set` works in both modes and writes to `/opt/conoha/<app>.env.server` on the server, **but proxy-mode deploy does not currently merge that file into the slot's `.env`** — running `app env set` against a proxy app prints `warning: app env has no effect on proxy-mode deployed slots; see #94 for the redesign` ([#94](https://github.com/crowdy/conoha-cli/issues/94) tracks the redesign). In proxy mode, pass app config via `environment:` / `env_file:` in your compose file for now.
 
 ```bash
 conoha app env set my-server --app-name myapp DATABASE_URL=postgres://...
@@ -232,7 +232,7 @@ conoha app env get my-server --app-name myapp DATABASE_URL
 conoha app env unset my-server --app-name myapp DATABASE_URL
 ```
 
-At deploy time, `.env` is assembled as **repo-committed `.env` first, then `/opt/conoha/<app>.env.server` (written by `conoha app env set`) appended**, so server-side values win via last-occurrence semantics. Any `.env` you committed in the repo is also picked up by `docker compose`.
+At deploy time (no-proxy mode only), `.env` is assembled as **repo-committed `.env` first, then `/opt/conoha/<app>.env.server` appended**, so `app env set` values win via last-occurrence semantics. Proxy mode does not perform this merge.
 
 ## Claude Code Skill
 
