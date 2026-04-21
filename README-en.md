@@ -158,7 +158,9 @@ conoha server rename <server-id-or-name> new-name
    conoha proxy boot my-server --acme-email ops@example.com
    ```
 
-3. Point the DNS A record at the VPS (Let's Encrypt HTTP-01 validation needs it).
+   Skipping this step and going straight to `app init` fails with an Admin API socket error — the proxy container is not yet running.
+
+3. Point the DNS A record at the VPS (Let's Encrypt HTTP-01 validation needs it). DNS must resolve by the time `app init` registers the host — if it doesn't, the `app`-layer deploy itself still succeeds but the hostname serves invalid certs until ACME eventually succeeds.
 
 4. Register with the proxy and deploy:
 
@@ -173,7 +175,7 @@ conoha server rename <server-id-or-name> new-name
    conoha app rollback my-server
    ```
 
-`deploy --slot <id>` pins the slot ID (rule: `[a-z0-9][a-z0-9-]{0,63}`; default is git short SHA or timestamp). Reusing an existing slot ID purges its work dir before re-extracting.
+`deploy --slot <id>` pins the slot ID (rule: `[a-z0-9][a-z0-9-]{0,63}`; default is git short SHA or timestamp). Explicitly reusing an existing slot ID purges its work dir before re-extracting. When `--slot` is omitted and the default collides with an existing compose project (e.g. a still-draining previous slot), the CLI auto-suffixes with `-2`, `-3`, ... so a collision is never destructive.
 
 ### no-proxy mode: flat single-slot
 

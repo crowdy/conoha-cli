@@ -200,7 +200,9 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
    conoha proxy boot my-server --acme-email ops@example.com
    ```
 
-3. DNS の A レコードを VPS に向ける（Let's Encrypt HTTP-01 検証に必要）。
+   このステップを飛ばして `app init` に進むと、Admin API ソケットに到達できずエラーで停止します。
+
+3. DNS の A レコードを VPS に向ける（Let's Encrypt HTTP-01 検証に必要）。DNS は `app init` がホストを登録する時点で名前解決できる必要があります — 未設定のまま進めても `app` レイヤのデプロイ自体は成功しますが、ACME 発行失敗の間はホスト名で無効な証明書が返ります。
 
 4. アプリを proxy に登録してデプロイ：
 
@@ -215,7 +217,7 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
    conoha app rollback my-server
    ```
 
-`deploy --slot <id>` で slot ID を固定できます (規則: `[a-z0-9][a-z0-9-]{0,63}`、既定は git short SHA または timestamp)。同名 slot を再利用すると作業ディレクトリを削除してから再展開します。
+`deploy --slot <id>` で slot ID を固定できます (規則: `[a-z0-9][a-z0-9-]{0,63}`、既定は git short SHA または timestamp)。同名 slot を明示的に再利用すると作業ディレクトリを削除してから再展開します。`--slot` を省略した場合、既定値が既存の compose プロジェクトと衝突したら CLI が自動で `-2` / `-3` と suffix を付けて衝突を回避するので、drain 中のスロットを破壊的に上書きすることはありません。
 
 ### no-proxy モード: フラット単一スロット
 
