@@ -22,7 +22,7 @@ func TestBuildNoProxyDeployCmd(t *testing.T) {
 	for _, want := range []string{
 		"cd '/opt/conoha/myapp'",
 		"docker compose -p myapp",
-		"-f compose.yml",
+		"-f 'compose.yml'",
 		"up -d --build",
 	} {
 		if !strings.Contains(got, want) {

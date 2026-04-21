@@ -113,9 +113,11 @@ func buildNoProxyUploadCmd(workDir string) string {
 // buildNoProxyDeployCmd brings the flat-layout compose project up in place.
 // The compose project name equals the app name (no slot suffix).
 // Caller MUST pre-validate app via internalssh.ValidateAppName.
+// composeFile is defensively single-quoted — today it comes from the
+// ResolveComposeFile whitelist, but quoting hardens against future callers.
 func buildNoProxyDeployCmd(workDir, app, composeFile string) string {
 	return fmt.Sprintf(
-		"cd '%s' && docker compose -p %s -f %s up -d --build",
+		"cd '%s' && docker compose -p %s -f '%s' up -d --build",
 		workDir, app, composeFile)
 }
 
@@ -141,12 +143,22 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 	}
 	defer func() { _ = sshClient.Close() }()
 
+	// Mode dispatch parity: reject if this app was initialized in no-proxy mode.
+	// Absent marker falls through to the existing "service not found on proxy" path.
+	got, markerErr := ReadMarker(sshClient, pf.Name)
+	if markerErr != nil && !errors.Is(markerErr, ErrNoMarker) {
+		return markerErr
+	}
+	if markerErr == nil && got == ModeNoProxy {
+		return formatModeConflictError(pf.Name, got, ModeProxy)
+	}
+
 	dataDir, _ := cmd.Flags().GetString("data-dir")
 	admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
 
 	// Service must exist — init registers it. Missing = user skipped init.
 	if _, err := admin.Get(pf.Name); err != nil {
-		return fmt.Errorf("service %q not found on proxy — run 'conoha app init %s' first: %w", pf.Name, serverID, err)
+		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init %s' first: %w", pf.Name, serverID, err)
 	}
 
 	slotOverride, _ := cmd.Flags().GetString("slot")
