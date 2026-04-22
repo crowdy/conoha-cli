@@ -12,6 +12,7 @@ import (
 	cmdconfig "github.com/crowdy/conoha-cli/cmd/config"
 	"github.com/crowdy/conoha-cli/cmd/dns"
 	"github.com/crowdy/conoha-cli/cmd/flavor"
+	"github.com/crowdy/conoha-cli/cmd/gpu"
 	"github.com/crowdy/conoha-cli/cmd/identity"
 	"github.com/crowdy/conoha-cli/cmd/image"
 	"github.com/crowdy/conoha-cli/cmd/keypair"
@@ -99,6 +100,7 @@ func init() {
 	rootCmd.AddCommand(app.Cmd)
 	rootCmd.AddCommand(proxy.Cmd)
 	rootCmd.AddCommand(skill.Cmd)
+	rootCmd.AddCommand(gpu.Cmd)
 }
 
 // Execute runs the root command.
