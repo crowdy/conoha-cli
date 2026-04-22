@@ -67,7 +67,7 @@ func runInitProxy(cmd *cobra.Command, serverID string) error {
 
 	// Reject implicit mode switch — user must `app destroy` first.
 	if existing, err := ReadMarker(sshClient, pf.Name); err == nil && existing != ModeProxy {
-		return formatModeConflictError(pf.Name, existing, ModeProxy)
+		return formatModeConflictError(pf.Name, serverID, existing, ModeProxy)
 	} else if err != nil && !errors.Is(err, ErrNoMarker) {
 		return err
 	}
@@ -112,7 +112,7 @@ func runInitNoProxy(cmd *cobra.Command, serverID string) error {
 
 	// Reject implicit mode switch — user must `app destroy` first.
 	if existing, err := ReadMarker(sshClient, appName); err == nil && existing != ModeNoProxy {
-		return formatModeConflictError(appName, existing, ModeNoProxy)
+		return formatModeConflictError(appName, serverID, existing, ModeNoProxy)
 	} else if err != nil && !errors.Is(err, ErrNoMarker) {
 		return err
 	}
