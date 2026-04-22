@@ -160,7 +160,7 @@ conoha server rename <server-id-or-name> new-name
 
    Skipping this step and going straight to `app init` fails with an Admin API socket error — the proxy container is not yet running.
 
-3. Point the DNS A record at the VPS (Let's Encrypt HTTP-01 validation needs it). DNS must resolve by the time `app init` registers the host — if it doesn't, the `app`-layer deploy itself still succeeds but the hostname serves invalid certs until ACME eventually succeeds.
+3. Point the DNS A record at the VPS (Let's Encrypt HTTP-01 validation needs it). DNS must resolve by the time `app init` registers the host — if it doesn't, the `app`-layer deploy still succeeds but HTTPS to the hostname fails at the TLS handshake (no cert has been issued for that SNI, so the server can't present one — clients see a connection reset / handshake failure, not a browser cert-warning page) until ACME eventually succeeds.
 
 4. Register with the proxy and deploy:
 
