@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -54,7 +55,9 @@ var deleteCmd = &cobra.Command{
 				if verr != nil {
 					return fmt.Errorf("fetching volume %s: %w", a.VolumeID, verr)
 				}
-				if vol.Bootable == "true" {
+				// Cinder returns "true" / "false" as strings; EqualFold tolerates
+				// the rare capitalized variant some stacks emit.
+				if strings.EqualFold(vol.Bootable, "true") {
 					bootVolumeIDs = append(bootVolumeIDs, a.VolumeID)
 				}
 			}
@@ -65,7 +68,7 @@ var deleteCmd = &cobra.Command{
 
 		confirmMsg := fmt.Sprintf("Delete server %q (%s)? This cannot be undone", s.Name, s.ID)
 		if len(bootVolumeIDs) > 0 {
-			confirmMsg = fmt.Sprintf("Delete server %q (%s) AND boot volume(s) %v? This cannot be undone", s.Name, s.ID, bootVolumeIDs)
+			confirmMsg = fmt.Sprintf("Delete server %q (%s) AND boot volume(s) [%s]? This cannot be undone", s.Name, s.ID, strings.Join(bootVolumeIDs, ", "))
 		}
 		ok, err := prompt.Confirm(confirmMsg)
 		if err != nil {
@@ -106,11 +109,44 @@ var deleteCmd = &cobra.Command{
 
 		if len(bootVolumeIDs) > 0 {
 			volumeAPI := api.NewVolumeAPI(client)
+			var delErrs []error
 			for _, vid := range bootVolumeIDs {
+				// Server removal from the Compute API does not guarantee the
+				// volume has reached `available` — Cinder still transitions
+				// it through `detaching`. Poll briefly so DeleteVolume does
+				// not 409 on the first attempt. Short, bounded timeout: in
+				// practice the transition is a few seconds.
+				if werr := cmdutil.WaitFor(cmdutil.WaitConfig{
+					Resource: "volume " + vid + " detach",
+					Timeout:  60 * time.Second,
+					Interval: 2 * time.Second,
+				}, func() (bool, string, error) {
+					vol, gerr := volumeAPI.GetVolume(vid)
+					if gerr != nil {
+						return false, "", gerr
+					}
+					switch vol.Status {
+					case "available":
+						return true, vol.Status, nil
+					case "in-use", "detaching":
+						return false, vol.Status, nil
+					default:
+						// error/deleting/creating — let DeleteVolume surface
+						// the real cinder message rather than looping.
+						return true, vol.Status, nil
+					}
+				}); werr != nil {
+					delErrs = append(delErrs, fmt.Errorf("waiting for volume %s to detach: %w", vid, werr))
+					continue
+				}
 				if err := volumeAPI.DeleteVolume(vid); err != nil {
-					return fmt.Errorf("deleting boot volume %s: %w", vid, err)
+					delErrs = append(delErrs, fmt.Errorf("deleting boot volume %s: %w", vid, err))
+					continue
 				}
 				fmt.Fprintf(os.Stderr, "Boot volume %s deleted\n", vid)
+			}
+			if err := errors.Join(delErrs...); err != nil {
+				return err
 			}
 		}
 
