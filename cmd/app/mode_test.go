@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -237,10 +238,12 @@ func TestModeErrorsCarryExitCode(t *testing.T) {
 		}
 	})
 	t.Run("wrapped by fmt.Errorf still resolves", func(t *testing.T) {
-		// deploy.go:179 wraps notInitializedError with fmt.Errorf %w — make
-		// sure the exit code survives the outer wrap.
+		// Mirror the exact wrap pattern at deploy.go:179 —
+		// `fmt.Errorf("%w: %v", notInitializedError(...), err)` — so this
+		// test breaks if a future GetExitCode change stops traversing the
+		// wrap chain for linear %w wraps.
 		inner := notInitializedError("myapp", "srv", ModeProxy)
-		outer := errors.Join(inner, errors.New("outer context"))
+		outer := fmt.Errorf("%w: %v", inner, errors.New("admin.Get failed"))
 		if code := cerrors.GetExitCode(outer); code != cerrors.ExitNotInitialized {
 			t.Errorf("lost exit code through wrap: got %d", code)
 		}
