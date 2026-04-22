@@ -199,6 +199,8 @@ conoha app destroy my-server --app-name myapp
 
 `rollback` is not available in no-proxy mode (there is no blue/green swap; invoking it prints a "rollback is not supported in no-proxy mode" error and exits). To revert, check out the previous commit and redeploy: `git checkout <sha> && conoha app deploy --no-proxy --app-name <app> <server>`.
 
+Redeploys only **overlay** new files on top of the work dir — paths removed from the repo stay on the server (this is intentional for `.env.server` and named-volume bind mounts that must survive redeploys). To clean up a specific stale file, run `ssh <server> rm /opt/conoha/<name>/<path>` yourself. A future `--clean` flag may be added ([#108](https://github.com/crowdy/conoha-cli/issues/108)).
+
 ### Switching modes
 
 Destroy, then re-init in the opposite mode:

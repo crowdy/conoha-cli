@@ -241,6 +241,8 @@ conoha app destroy my-server --app-name myapp
 
 no-proxy モードには blue/green swap が存在しないため、`rollback` は利用できません (実行すると "rollback is not supported in no-proxy mode" エラーが出ます)。履歴から戻したい場合は該当コミットを checkout して `deploy` し直してください。
 
+再デプロイ時は tar 展開が **上書きのみ**行い、リポジトリから消したファイルはサーバー上に残り続けます (`.env.server` や名前付きボリュームの bind mount を守るため意図的にそうしています)。古いファイルを掃除する場合は `ssh <server> rm /opt/conoha/<name>/<path>` で個別に削除してください。将来 `--clean` フラグを追加する可能性があります ([#108](https://github.com/crowdy/conoha-cli/issues/108))。
+
 ### モードの切り替え
 
 既存のアプリのモードを変更するには、一度破棄してから反対のモードで再 init します:
