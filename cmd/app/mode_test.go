@@ -81,6 +81,28 @@ func TestBuildReadCurrentSlotCmd(t *testing.T) {
 	}
 }
 
+func TestTruncateForError(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		max  int
+		want string
+	}{
+		{"short fits", "abc123", 16, `"abc123"`},
+		{"exact fit", "abcdefghijklmnop", 16, `"abcdefghijklmnop"`},
+		{"over max", "abcdefghijklmnopqrstuvwxyz", 16, `"abcdefghijklmnop…" (truncated, 26 bytes)`},
+		{"megabyte of nonsense bounded", strings.Repeat("x", 4096), 16, `"xxxxxxxxxxxxxxxx…" (truncated, 4096 bytes)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateForError(tt.in, tt.max)
+			if got != tt.want {
+				t.Errorf("truncateForError(%d chars, %d) = %q, want %q", len(tt.in), tt.max, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveModeLogic(t *testing.T) {
 	sentinelReadErr := errors.New("ssh broken")
 

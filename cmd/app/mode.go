@@ -118,9 +118,20 @@ func ReadCurrentSlot(cli *ssh.Client, app string) (string, error) {
 		return "", nil
 	}
 	if err := ValidateSlotID(slot); err != nil {
-		return "", fmt.Errorf("CURRENT_SLOT: %w", err)
+		return "", fmt.Errorf("CURRENT_SLOT contains invalid slot ID %s: must match %s", truncateForError(slot, 16), slotIDRe)
 	}
 	return slot, nil
+}
+
+// truncateForError returns a %q-quoted rendering of s, truncated to max
+// runes with a trailing ellipsis when needed. Used to bound log output
+// when server-side state files are corrupted with arbitrary content.
+func truncateForError(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return fmt.Sprintf("%q", s)
+	}
+	return fmt.Sprintf("%q (truncated, %d bytes)", string(runes[:max])+"…", len(s))
 }
 
 // flagMode reads --proxy / --no-proxy flags and returns the intended mode, or

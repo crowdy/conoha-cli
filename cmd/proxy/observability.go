@@ -106,7 +106,7 @@ var servicesCmd = &cobra.Command{
 // curlVia is a tiny helper for non-/v1/ endpoints (/version, /readyz)
 // that don't return the proxy error envelope.
 func curlVia(exec proxypkg.Executor, dataDir, path string) ([]byte, error) {
-	cmd := fmt.Sprintf("curl -sS --unix-socket %s/admin.sock http://admin%s", dataDir, path)
+	cmd := fmt.Sprintf("curl -sS --unix-socket '%s/admin.sock' 'http://admin%s'", dataDir, path)
 	var buf []byte
 	w := byteWriter{&buf}
 	if err := exec.Run(cmd, nil, &w); err != nil {
