@@ -46,7 +46,12 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 			return nil, err
 		}
 	}
-	if err := internalssh.ValidateAppName(appName); err != nil {
+	// Legacy-tolerant: connectToApp is reached by logs/stop/restart/status/
+	// rollback/destroy — all read/ops on already-deployed apps. Accepting the
+	// pre-DNS-1123 form here lets users manage and tear down v0.1.x-era
+	// deployments whose names contain uppercase or underscores. New deploys
+	// go through the strict ValidateAppName on the init/deploy paths.
+	if err := internalssh.ValidateAppNameExisting(appName); err != nil {
 		return nil, err
 	}
 

@@ -39,6 +39,43 @@ func TestValidateAppName(t *testing.T) {
 	}
 }
 
+func TestValidateAppNameExisting(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		// Strict-superset: everything the new rule accepts must still pass.
+		{"dns-1123 simple", "myapp", false},
+		{"dns-1123 with dash", "my-app", false},
+		{"dns-1123 leading digit", "1app", false},
+		// Legacy forms still accepted for teardown/inspection of v0.1.x deployments.
+		{"legacy uppercase", "MyApp", false},
+		{"legacy all uppercase", "APP", false},
+		{"legacy underscore", "my_app", false},
+		{"legacy mixed", "My_App-1", false},
+		// Still-rejected shapes — the loose rule never allowed these.
+		{"empty", "", true},
+		{"starts with dash", "-app", true},
+		{"starts with underscore", "_app", true},
+		{"contains space", "my app", true},
+		{"contains dot", "my.app", true},
+		{"contains slash", "my/app", true},
+		{"shell injection semicolon", "app;rm -rf /", true},
+		{"shell injection backtick", "app`whoami`", true},
+		{"too long", "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm", true},
+		{"legacy max length 64", "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateAppNameExisting(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateAppNameExisting(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateEnvKey(t *testing.T) {
 	tests := []struct {
 		name    string
