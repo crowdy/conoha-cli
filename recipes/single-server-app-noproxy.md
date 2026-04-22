@@ -44,6 +44,16 @@ conoha app deploy --no-proxy --app-name myapp myapp
 
 The CLI tars the current directory (respecting `.dockerignore`), uploads to `/opt/conoha/myapp/` on the VPS, and runs `docker compose -p myapp up -d --build`.
 
+### Redeploy behavior
+
+Tar extraction overlays new files on top of the existing work dir — it does **not** sweep files that have been removed from the repo. If you `rm old-config.json` locally, `old-config.json` stays on the VPS across redeploys until you remove it manually:
+
+```bash
+ssh <server> rm /opt/conoha/myapp/old-config.json
+```
+
+This mirrors v0.1.x behavior and is intentional for `.env.server` (lives at `/opt/conoha/myapp.env.server`, one level up) and named-volume bind mounts, which must survive redeploys. A future `--clean` flag may be added if the manual step proves too easy to forget (see #108).
+
 ## 5. Day-two operations
 
 ```bash
