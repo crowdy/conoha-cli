@@ -299,6 +299,7 @@ SSH は既存パターン通り `internalssh.RunCommand` を interface 化して
 
 スペック確定済みだが実装段階で見直し可能な点:
 
-- **マーカー書き込み失敗時のロールバック**: init 中 `WriteMarker` が失敗した場合、proxy upsert は既に成功している (proxy モード時)。現行案は "警告のみ、proxy 側は残す"。代案として upsert を取り消す。本 PR では前者を採用 (実装簡潔性)。
+- **マーカー書き込み失敗時のロールバック**: init 中 `WriteMarker` が失敗した場合、proxy upsert は既に成功している (proxy モード時)。当初案は "警告のみ、proxy 側は残す" だったが、PR #103 レビュー (item I1) で再検討し、`runInitProxy` はマーカー書き込み失敗を fatal として返すよう変更した (commit `db7b1b9`, `cmd/app/init.go:92-94`)。理由: マーカー不在の状態で次の `app deploy` を実行するとモードが判定できず、proxy に登録済みにも関わらず "not initialized" という誤解を招くエラーになるため。proxy 側の upsert 取り消しは行わず、operator が再実行で回復する想定。
 - **`destroy` でマーカー不在の legacy サーバ**: "best-effort" スクリプト実行を継続。`--force` フラグを将来追加する余地あり。
 - **`--no-proxy` と `--app-name` の関係**: no-proxy モードでは常に `--app-name` 必須。proxy モードでは conoha.yml の `name` が優先されるため `--app-name` は補助的。この非対称は意図的 (no-proxy は設定ファイル不在が正常経路)。
+- **マーカー読み書きと操作の TOCTOU**: 同一 app + server ペアに対する並行 CLI 実行 (例: `app destroy` と `app deploy --no-proxy`) はマーカーの読み取りと実操作の間に競合窓があり、最終状態として "稼働中の compose project + マーカー不在" が起こり得る。データ損失ではないが、後続の `logs`/`stop` が "not initialized" で失敗する。本 CLI は単一オペレータ前提で設計しており、本 PR では対応しない。破壊的操作は同じ app に対して並行実行しないこと (PR #103 レビュー item M6)。
