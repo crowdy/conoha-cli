@@ -221,16 +221,20 @@ SSH は既存パターン通り `internalssh.RunCommand` を interface 化して
 
 ## 5. エラー・終了コード
 
-| code | 意味 | 発生例 |
-|---|---|---|
-| 0 | 成功 | |
-| 1 | 一般失敗 | SSH 切断、docker 失敗 |
-| 2 | usage / 引数エラー | `--no-proxy` with no `--app-name` |
-| 4 | validation | conoha.yml 解析失敗 (既存) |
-| **5 (新)** | mode-conflict | §2.3、rollback in no-proxy |
-| **6 (新)** | not-initialized | logs/stop/restart/status でマーカー & CURRENT_SLOT 両方不在 |
+当初案では 5/6 を本 feature のエラーに割り当てていたが、`internal/errors/exitcodes.go` が既に 5=`ExitAPI`、6=`ExitNetwork` を使用していたため、#111 実装時に 7/8 へ繰り下げた。spec 初稿の時点で CLI-wide の割り当てを確認していなかった設計ミス。
 
-実装は `cmd/cmdutil` に `ExitWithCode(err, code)` が既に存在すれば流用、無ければ `return` 値で cobra に任せ Run ラッパーでコード設定。
+| code | 定数 | 意味 | 発生例 |
+|---|---|---|---|
+| 0 | `ExitOK` | 成功 | |
+| 1 | `ExitGeneral` | 一般失敗 | SSH 切断、docker 失敗 |
+| 2 | `ExitAuth` | auth / usage | `--no-proxy` with no `--app-name` |
+| 4 | `ExitValidation` | validation | conoha.yml 解析失敗 (既存) |
+| 5 | `ExitAPI` | API error (既存) | |
+| 6 | `ExitNetwork` | network error (既存) | |
+| **7 (新)** | `ExitModeConflict` | mode-conflict | §2.3、rollback in no-proxy |
+| **8 (新)** | `ExitNotInitialized` | not-initialized | logs/stop/restart/status でマーカー不在 |
+
+実装: `internal/errors.WithExitCode(err, code)` で対象エラーに exit code を annotate し、`GetExitCode` が errors.As で wrap chain を辿って解決する。`formatModeConflictError` は `ExitModeConflict`、`notInitializedError` は `ExitNotInitialized` を付与する。
 
 ## 6. 設定・CLI 表面まとめ
 

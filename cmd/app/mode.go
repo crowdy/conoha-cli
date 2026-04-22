@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
 
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
 
@@ -67,6 +68,8 @@ func buildReadCurrentSlotCmd(app string) string {
 // serverID is substituted into the recovery command hint so users can copy-run.
 // When serverID is empty the literal "<server>" placeholder is kept (used when
 // the caller doesn't know the server ID at error-construction time).
+// The returned error carries ExitModeConflict (7) via the wrap chain so
+// scripts can distinguish mode-conflict aborts from generic failures.
 func formatModeConflictError(app, serverID string, got, want Mode) error {
 	oppositeInit := "conoha app init"
 	if want == ModeNoProxy {
@@ -76,32 +79,36 @@ func formatModeConflictError(app, serverID string, got, want Mode) error {
 	if server == "" {
 		server = "<server>"
 	}
-	return fmt.Errorf(
+	return cerrors.WithExitCode(fmt.Errorf(
 		`app %q is initialized in %s mode on this server, but --%s was requested.
 To switch modes:
     conoha app destroy %s               # removes the existing deployment
     %s %s       # re-initialize in %s mode
 %w`,
-		app, string(got), string(want), server, oppositeInit, server, string(want), ErrModeConflict)
+		app, string(got), string(want), server, oppositeInit, server, string(want), ErrModeConflict),
+		cerrors.ExitModeConflict)
 }
 
 // notInitializedError is the canonical error for a command that needs the
 // app's mode marker but finds it missing. The recovery hint includes the right
 // init subcommand based on mode when known; when mode is unset it suggests
-// the bare 'conoha app init' form.
+// the bare 'conoha app init' form. The returned error carries ExitNotInitialized
+// (8) via the wrap chain.
 func notInitializedError(app, serverID string, mode Mode) error {
 	server := serverID
 	if server == "" {
 		server = "<server>"
 	}
+	var msg string
 	switch mode {
 	case ModeNoProxy:
-		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init --no-proxy --app-name %s %s' first", app, app, server)
-	case ModeProxy:
-		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init %s' first", app, server)
+		msg = fmt.Sprintf("app %q not initialized on this server — run 'conoha app init --no-proxy --app-name %s %s' first", app, app, server)
+	case ModeProxy, "":
+		msg = fmt.Sprintf("app %q not initialized on this server — run 'conoha app init %s' first", app, server)
 	default:
-		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init %s' first", app, server)
+		msg = fmt.Sprintf("app %q not initialized on this server — run 'conoha app init %s' first", app, server)
 	}
+	return cerrors.WithExitCode(errors.New(msg), cerrors.ExitNotInitialized)
 }
 
 // notDeployedError is the canonical error for "marker present but CURRENT_SLOT
