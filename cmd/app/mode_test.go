@@ -2,8 +2,11 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 func TestMode_String(t *testing.T) {
@@ -212,4 +215,37 @@ func TestNotDeployedError(t *testing.T) {
 			t.Errorf("missing %q in %s", want, got)
 		}
 	}
+}
+
+func TestModeErrorsCarryExitCode(t *testing.T) {
+	t.Run("mode conflict → 7", func(t *testing.T) {
+		err := formatModeConflictError("myapp", "srv", ModeProxy, ModeNoProxy)
+		if code := cerrors.GetExitCode(err); code != cerrors.ExitModeConflict {
+			t.Errorf("GetExitCode = %d, want ExitModeConflict (%d)", code, cerrors.ExitModeConflict)
+		}
+		// errors.Is still matches the sentinel — existing checks in the
+		// tree (dispatch helpers) keep working.
+		if !errors.Is(err, ErrModeConflict) {
+			t.Errorf("errors.Is(ErrModeConflict) broken after WithExitCode")
+		}
+	})
+	t.Run("not initialized → 8", func(t *testing.T) {
+		for _, m := range []Mode{ModeProxy, ModeNoProxy, ""} {
+			err := notInitializedError("myapp", "srv", m)
+			if code := cerrors.GetExitCode(err); code != cerrors.ExitNotInitialized {
+				t.Errorf("mode=%q: GetExitCode = %d, want ExitNotInitialized (%d)", m, code, cerrors.ExitNotInitialized)
+			}
+		}
+	})
+	t.Run("wrapped by fmt.Errorf still resolves", func(t *testing.T) {
+		// Mirror the exact wrap pattern at deploy.go:179 —
+		// `fmt.Errorf("%w: %v", notInitializedError(...), err)` — so this
+		// test breaks if a future GetExitCode change stops traversing the
+		// wrap chain for linear %w wraps.
+		inner := notInitializedError("myapp", "srv", ModeProxy)
+		outer := fmt.Errorf("%w: %v", inner, errors.New("admin.Get failed"))
+		if code := cerrors.GetExitCode(outer); code != cerrors.ExitNotInitialized {
+			t.Errorf("lost exit code through wrap: got %d", code)
+		}
+	})
 }

@@ -1,10 +1,34 @@
 package errors
 
-import "fmt"
+import (
+	stderrors "errors"
+	"fmt"
+)
 
 // ExitCoder is implemented by errors that carry a process exit code.
 type ExitCoder interface {
 	ExitCode() int
+}
+
+// exitCodeErr annotates an underlying error with a specific process exit code
+// while preserving its message and wrap chain. Used by packages (cmd/app, ...)
+// that want typed sub-failures without defining a new struct per case.
+type exitCodeErr struct {
+	err  error
+	code int
+}
+
+func (e *exitCodeErr) Error() string { return e.err.Error() }
+func (e *exitCodeErr) Unwrap() error { return e.err }
+func (e *exitCodeErr) ExitCode() int { return e.code }
+
+// WithExitCode wraps err so that GetExitCode returns code. The wrapped error
+// remains errors.Is/As-compatible with whatever err already wraps.
+func WithExitCode(err error, code int) error {
+	if err == nil {
+		return nil
+	}
+	return &exitCodeErr{err: err, code: code}
 }
 
 // APIError represents an error returned by the ConoHa API.
@@ -99,14 +123,15 @@ func (e *NetworkError) ExitCode() int {
 	return ExitNetwork
 }
 
-// GetExitCode returns the exit code for the given error. If the error
-// implements the ExitCoder interface its code is returned; otherwise
-// ExitGeneral is returned.
+// GetExitCode returns the exit code for the given error. Traverses the
+// error wrap chain (errors.As) to find the first ExitCoder; returns
+// ExitGeneral when no ExitCoder is reachable.
 func GetExitCode(err error) int {
 	if err == nil {
 		return ExitOK
 	}
-	if ec, ok := err.(ExitCoder); ok {
+	var ec ExitCoder
+	if stderrors.As(err, &ec) {
 		return ec.ExitCode()
 	}
 	return ExitGeneral

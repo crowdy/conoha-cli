@@ -64,4 +64,31 @@ func TestGetExitCode(t *testing.T) {
 	if code := GetExitCode(fmt.Errorf("generic")); code != ExitGeneral {
 		t.Errorf("expected %d, got %d", ExitGeneral, code)
 	}
+	if code := GetExitCode(nil); code != ExitOK {
+		t.Errorf("expected ExitOK for nil, got %d", code)
+	}
+}
+
+func TestWithExitCode(t *testing.T) {
+	base := fmt.Errorf("something went wrong")
+	annotated := WithExitCode(base, ExitModeConflict)
+	if code := GetExitCode(annotated); code != ExitModeConflict {
+		t.Errorf("expected %d, got %d", ExitModeConflict, code)
+	}
+	// Preserve the underlying error message.
+	if annotated.Error() != base.Error() {
+		t.Errorf("message changed: got %q, want %q", annotated.Error(), base.Error())
+	}
+	// Nil input produces nil.
+	if WithExitCode(nil, ExitNotInitialized) != nil {
+		t.Errorf("WithExitCode(nil, ...) should be nil")
+	}
+}
+
+func TestGetExitCode_TraversesWrapChain(t *testing.T) {
+	inner := WithExitCode(fmt.Errorf("inner"), ExitNotInitialized)
+	outer := fmt.Errorf("outer wrap: %w", inner)
+	if code := GetExitCode(outer); code != ExitNotInitialized {
+		t.Errorf("expected %d through wrap chain, got %d", ExitNotInitialized, code)
+	}
 }
