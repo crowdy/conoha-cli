@@ -199,6 +199,32 @@ func (a *ComputeAPI) GetFlavor(id string) (*model.Flavor, error) {
 	return &resp.Flavor, nil
 }
 
+// FindFlavor returns a flavor by UUID or by exact Name match. UUID lookup is
+// attempted first when the input shape matches (36-char 8-4-4-4-12). Otherwise
+// ListFlavors is called and matched by Name.
+func (a *ComputeAPI) FindFlavor(idOrName string) (*model.Flavor, error) {
+	if looksLikeUUID(idOrName) {
+		return a.GetFlavor(idOrName)
+	}
+	flavors, err := a.ListFlavors()
+	if err != nil {
+		return nil, err
+	}
+	for i := range flavors {
+		if flavors[i].Name == idOrName {
+			return &flavors[i], nil
+		}
+	}
+	return nil, fmt.Errorf("flavor %q not found", idOrName)
+}
+
+// looksLikeUUID reports whether s matches the canonical 8-4-4-4-12 dash layout
+// without validating the hex characters. Sufficient for routing between ID and
+// name lookups.
+func looksLikeUUID(s string) bool {
+	return len(s) == 36 && s[8] == '-' && s[13] == '-' && s[18] == '-' && s[23] == '-'
+}
+
 // ListKeypairs returns all keypairs.
 func (a *ComputeAPI) ListKeypairs() ([]model.Keypair, error) {
 	url := fmt.Sprintf("%s/os-keypairs", a.baseURL())

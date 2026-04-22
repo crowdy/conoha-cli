@@ -73,10 +73,12 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		// Resolve flavor (need full struct for volume decision)
+		// Resolve flavor (need full struct for volume decision). Accept either
+		// a UUID or a flavor name (e.g. g2l-t-c4m4) to match the UX of --image
+		// and server-id arguments.
 		var flavor *model.Flavor
 		if flavorID != "" {
-			flavor, err = compute.GetFlavor(flavorID)
+			flavor, err = compute.FindFlavor(flavorID)
 			if err != nil {
 				return fmt.Errorf("flavor %q not found: %w", flavorID, err)
 			}
