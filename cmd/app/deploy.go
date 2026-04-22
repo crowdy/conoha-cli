@@ -54,15 +54,15 @@ func runDeployDispatch(cmd *cobra.Command, serverID string) error {
 			return err
 		}
 		defer func() { _ = sshClient.Close() }()
-		got, err := ReadMarker(sshClient, appName)
+		mode, err := ResolveMode(cmd, sshClient, appName, serverID)
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
-				return fmt.Errorf("app %q not initialized on this server — run 'conoha app init --no-proxy --app-name %s %s' first", appName, appName, serverID)
+				return notInitializedError(appName, serverID, ModeNoProxy)
 			}
 			return err
 		}
-		if got != ModeNoProxy {
-			return formatModeConflictError(appName, got, ModeNoProxy)
+		if mode != ModeNoProxy {
+			return formatModeConflictError(appName, serverID, mode, ModeNoProxy)
 		}
 		return runNoProxyDeploy(cmd, sshClient, s, ip, appName)
 	}
@@ -163,12 +163,12 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 
 	// Mode dispatch parity: reject if this app was initialized in no-proxy mode.
 	// Absent marker falls through to the existing "service not found on proxy" path.
-	got, markerErr := ReadMarker(sshClient, pf.Name)
-	if markerErr != nil && !errors.Is(markerErr, ErrNoMarker) {
-		return markerErr
+	mode, err := ResolveMode(cmd, sshClient, pf.Name, serverID)
+	if err != nil && !errors.Is(err, ErrNoMarker) {
+		return err
 	}
-	if markerErr == nil && got == ModeNoProxy {
-		return formatModeConflictError(pf.Name, got, ModeProxy)
+	if mode == ModeNoProxy {
+		return formatModeConflictError(pf.Name, serverID, mode, ModeProxy)
 	}
 
 	dataDir, _ := cmd.Flags().GetString("data-dir")
@@ -176,7 +176,7 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 
 	// Service must exist — init registers it. Missing = user skipped init.
 	if _, err := admin.Get(pf.Name); err != nil {
-		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init %s' first: %w", pf.Name, serverID, err)
+		return fmt.Errorf("%w: %v", notInitializedError(pf.Name, serverID, ModeProxy), err)
 	}
 
 	slotOverride, _ := cmd.Flags().GetString("slot")

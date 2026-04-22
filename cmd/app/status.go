@@ -30,10 +30,10 @@ var statusCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
-		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName)
+		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName, ctx.ServerID)
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
-				return fmt.Errorf("app %q has not been initialized on this server", ctx.AppName)
+				return notInitializedError(ctx.AppName, ctx.ServerID, "")
 			}
 			return err
 		}

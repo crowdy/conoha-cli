@@ -112,7 +112,7 @@ func TestResolveModeLogic(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			mode, err := resolveModeLogic("myapp", c.want, c.got, c.readErr)
+			mode, err := resolveModeLogic("myapp", "my-server", c.want, c.got, c.readErr)
 			if mode != c.expMode {
 				t.Errorf("mode = %q, want %q", mode, c.expMode)
 			}
@@ -135,7 +135,7 @@ func TestResolveModeLogic(t *testing.T) {
 }
 
 func TestFormatModeConflictError(t *testing.T) {
-	err := formatModeConflictError("myapp", ModeProxy, ModeNoProxy)
+	err := formatModeConflictError("myapp", "my-server", ModeProxy, ModeNoProxy)
 	if !errors.Is(err, ErrModeConflict) {
 		t.Errorf("expected ErrModeConflict, got %v", err)
 	}
@@ -144,11 +144,50 @@ func TestFormatModeConflictError(t *testing.T) {
 		`"myapp"`,
 		"proxy mode",
 		"--no-proxy was requested",
-		"conoha app destroy",
-		"conoha app init --no-proxy",
+		"conoha app destroy my-server",
+		"conoha app init --no-proxy my-server",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("conflict error missing %q: %s", want, msg)
+		}
+	}
+}
+
+func TestFormatModeConflictError_missingServerID(t *testing.T) {
+	err := formatModeConflictError("myapp", "", ModeProxy, ModeNoProxy)
+	if !strings.Contains(err.Error(), "conoha app destroy <server>") {
+		t.Errorf("expected <server> placeholder when serverID is empty: %s", err.Error())
+	}
+}
+
+func TestNotInitializedError(t *testing.T) {
+	cases := []struct {
+		name    string
+		mode    Mode
+		wantSub string
+	}{
+		{"proxy mode", ModeProxy, "conoha app init my-server"},
+		{"no-proxy mode", ModeNoProxy, "conoha app init --no-proxy --app-name myapp my-server"},
+		{"mode unknown", "", "conoha app init my-server"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := notInitializedError("myapp", "my-server", c.mode).Error()
+			if !strings.Contains(got, c.wantSub) {
+				t.Errorf("want substring %q, got %q", c.wantSub, got)
+			}
+			if !strings.Contains(got, `app "myapp"`) {
+				t.Errorf("missing quoted app name: %s", got)
+			}
+		})
+	}
+}
+
+func TestNotDeployedError(t *testing.T) {
+	got := notDeployedError("myapp", "my-server").Error()
+	for _, want := range []string{`"myapp"`, "not been deployed", "conoha app deploy my-server"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
 		}
 	}
 }

@@ -36,7 +36,7 @@ var destroyCmd = &cobra.Command{
 		// Resolve mode BEFORE the prompt so a flag/marker conflict aborts
 		// before the user commits, and BEFORE the destroy script runs
 		// because the script removes the .conoha-mode marker as part of rm -rf.
-		mode, modeErr := ResolveMode(cmd, ctx.Client, ctx.AppName)
+		mode, modeErr := ResolveMode(cmd, ctx.Client, ctx.AppName, ctx.ServerID)
 		if modeErr != nil && !errors.Is(modeErr, ErrNoMarker) {
 			return modeErr
 		}

@@ -29,10 +29,10 @@ var stopCmd = &cobra.Command{
 
 		// Resolve mode + slot before the prompt so flag/marker conflicts or
 		// "not deployed" errors abort without asking the user to confirm (I3).
-		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName)
+		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName, ctx.ServerID)
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
-				return fmt.Errorf("app %q has not been initialized on this server", ctx.AppName)
+				return notInitializedError(ctx.AppName, ctx.ServerID, "")
 			}
 			return err
 		}
@@ -44,7 +44,7 @@ var stopCmd = &cobra.Command{
 				return err
 			}
 			if slot == "" {
-				return fmt.Errorf("app %q has not been deployed on this server", ctx.AppName)
+				return notDeployedError(ctx.AppName, ctx.ServerID)
 			}
 			composeCmd = buildStopCmdForProxy(ctx.AppName, slot)
 		} else {

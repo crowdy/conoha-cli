@@ -51,10 +51,10 @@ var rollbackCmd = &cobra.Command{
 		}
 		defer func() { _ = sshClient.Close() }()
 
-		mode, err := ResolveMode(cmd, sshClient, pf.Name)
+		mode, err := ResolveMode(cmd, sshClient, pf.Name, args[0])
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
-				return fmt.Errorf("app %q not initialized on this server — run 'conoha app init' first", pf.Name)
+				return notInitializedError(pf.Name, args[0], ModeProxy)
 			}
 			return err
 		}

@@ -16,6 +16,7 @@ import (
 type appContext struct {
 	Client      *ssh.Client
 	AppName     string
+	ServerID    string // the raw id-or-name value the user passed on the CLI
 	Server      *model.Server
 	IP          string
 	User        string
@@ -78,6 +79,7 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 	return &appContext{
 		Client:      sshClient,
 		AppName:     appName,
+		ServerID:    args[0],
 		Server:      s,
 		IP:          ip,
 		User:        user,

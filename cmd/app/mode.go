@@ -64,18 +64,54 @@ func buildReadCurrentSlotCmd(app string) string {
 }
 
 // formatModeConflictError returns a user-facing error wrapping ErrModeConflict.
-func formatModeConflictError(app string, got, want Mode) error {
+// serverID is substituted into the recovery command hint so users can copy-run.
+// When serverID is empty the literal "<server>" placeholder is kept (used when
+// the caller doesn't know the server ID at error-construction time).
+func formatModeConflictError(app, serverID string, got, want Mode) error {
 	oppositeInit := "conoha app init"
 	if want == ModeNoProxy {
 		oppositeInit = "conoha app init --no-proxy"
 	}
+	server := serverID
+	if server == "" {
+		server = "<server>"
+	}
 	return fmt.Errorf(
 		`app %q is initialized in %s mode on this server, but --%s was requested.
 To switch modes:
-    conoha app destroy <server>               # removes the existing deployment
-    %s <server>       # re-initialize in %s mode
+    conoha app destroy %s               # removes the existing deployment
+    %s %s       # re-initialize in %s mode
 %w`,
-		app, string(got), string(want), oppositeInit, string(want), ErrModeConflict)
+		app, string(got), string(want), server, oppositeInit, server, string(want), ErrModeConflict)
+}
+
+// notInitializedError is the canonical error for a command that needs the
+// app's mode marker but finds it missing. The recovery hint includes the right
+// init subcommand based on mode when known; when mode is unset it suggests
+// the bare 'conoha app init' form.
+func notInitializedError(app, serverID string, mode Mode) error {
+	server := serverID
+	if server == "" {
+		server = "<server>"
+	}
+	switch mode {
+	case ModeNoProxy:
+		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init --no-proxy --app-name %s %s' first", app, app, server)
+	case ModeProxy:
+		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init %s' first", app, server)
+	default:
+		return fmt.Errorf("app %q not initialized on this server — run 'conoha app init %s' first", app, server)
+	}
+}
+
+// notDeployedError is the canonical error for "marker present but CURRENT_SLOT
+// absent" — the app was initialized but never deployed.
+func notDeployedError(app, serverID string) error {
+	server := serverID
+	if server == "" {
+		server = "<server>"
+	}
+	return fmt.Errorf("app %q has not been deployed on this server — run 'conoha app deploy %s' first", app, server)
 }
 
 // ReadMarker returns the mode recorded on the server for app, or ErrNoMarker
@@ -142,16 +178,18 @@ func flagMode(cmd *cobra.Command) Mode {
 
 // ResolveMode interprets flags against the marker.
 // Precedence: flag override compared to marker (error on mismatch) > marker > ErrNoMarker.
-func ResolveMode(cmd *cobra.Command, cli *ssh.Client, app string) (Mode, error) {
+// serverID is embedded into ErrModeConflict's recovery hint; pass "" if the
+// caller does not have it.
+func ResolveMode(cmd *cobra.Command, cli *ssh.Client, app, serverID string) (Mode, error) {
 	want := flagMode(cmd)
 	got, readErr := ReadMarker(cli, app)
-	return resolveModeLogic(app, want, got, readErr)
+	return resolveModeLogic(app, serverID, want, got, readErr)
 }
 
 // resolveModeLogic is the pure precedence layer extracted for unit testing.
 // want is the flag-requested mode ("" if none). got/readErr come from ReadMarker.
 // Non-ErrNoMarker read errors are propagated unchanged.
-func resolveModeLogic(app string, want, got Mode, readErr error) (Mode, error) {
+func resolveModeLogic(app, serverID string, want, got Mode, readErr error) (Mode, error) {
 	if readErr != nil && !errors.Is(readErr, ErrNoMarker) {
 		return "", readErr
 	}
@@ -163,7 +201,7 @@ func resolveModeLogic(app string, want, got Mode, readErr error) (Mode, error) {
 	case errors.Is(readErr, ErrNoMarker):
 		return want, nil
 	case want != got:
-		return "", formatModeConflictError(app, got, want)
+		return "", formatModeConflictError(app, serverID, got, want)
 	default:
 		return got, nil
 	}
