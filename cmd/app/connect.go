@@ -32,9 +32,13 @@ type appContext struct {
 	markerErr  error
 }
 
-// Marker returns the on-server mode marker, cached on first call. Safe to
-// call any number of times from any code path. Returns ErrNoMarker when the
-// .conoha-mode file is absent.
+// Marker returns the on-server mode marker. On first call it performs the
+// ReadMarker round-trip and caches **both** the value and the error; every
+// subsequent call within the same command invocation returns the same pair.
+// That means a transient SSH/parse failure on the first call is pinned for
+// the rest of the command — consistent with fail-fast semantics. Safe for
+// concurrent use. Returns ErrNoMarker when .conoha-mode is absent; other
+// errors (SSH transport, ParseMarker) propagate unchanged.
 func (c *appContext) Marker() (Mode, error) {
 	c.markerOnce.Do(func() {
 		c.markerMode, c.markerErr = ReadMarker(c.Client, c.AppName)
