@@ -202,7 +202,7 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
 
    このステップを飛ばして `app init` に進むと、Admin API ソケットに到達できずエラーで停止します。
 
-3. DNS の A レコードを VPS に向ける（Let's Encrypt HTTP-01 検証に必要）。DNS は `app init` がホストを登録する時点で名前解決できる必要があります — 未設定のまま進めても `app` レイヤのデプロイ自体は成功しますが、ACME 発行失敗の間はホスト名で無効な証明書が返ります。
+3. DNS の A レコードを VPS に向ける（Let's Encrypt HTTP-01 検証に必要）。DNS は `app init` がホストを登録する時点で名前解決できる必要があります — 未設定のまま進めても `app` レイヤのデプロイ自体は成功しますが、ACME が発行に成功するまでは該当ホスト名への HTTPS が TLS ハンドシェイク段階で失敗します（発行できた証明書が無く、SNI に対してサーバが証明書を返せない状態。ブラウザ警告ページではなく接続リセット／ハンドシェイク失敗として見えます）。
 
 4. アプリを proxy に登録してデプロイ：
 

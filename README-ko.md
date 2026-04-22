@@ -160,7 +160,7 @@ conoha server rename <server-id-or-name> new-name
 
    이 단계를 건너뛰고 바로 `app init` 으로 넘어가면 Admin API 소켓에 닿지 못해 에러로 중단됩니다 (프록시 컨테이너가 아직 떠 있지 않음).
 
-3. DNS A 레코드를 VPS 로 향하게 하기 (Let's Encrypt HTTP-01 검증에 필요). DNS 는 `app init` 이 호스트를 등록하는 시점까지 해소 가능해야 합니다 — 설정 전에 진행해도 `app` 계층 배포 자체는 성공하지만, ACME 가 성공할 때까지는 호스트명에 유효하지 않은 인증서가 응답됩니다.
+3. DNS A 레코드를 VPS 로 향하게 하기 (Let's Encrypt HTTP-01 검증에 필요). DNS 는 `app init` 이 호스트를 등록하는 시점까지 해소 가능해야 합니다 — 설정 전에 진행해도 `app` 계층 배포 자체는 성공하지만, ACME 가 발급에 성공할 때까지 해당 호스트명으로의 HTTPS 는 TLS 핸드셰이크 단계에서 실패합니다 (해당 SNI 에 발급된 인증서가 없어 서버가 인증서를 제시하지 못함 — 브라우저 경고 페이지가 아니라 connection reset / handshake 실패로 보입니다).
 
 4. 프록시에 앱을 등록하고 배포:
 
