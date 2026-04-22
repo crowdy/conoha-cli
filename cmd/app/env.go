@@ -19,8 +19,10 @@ func proxyEnvWarningMessage() string {
 
 // maybeWarnProxyEnvMode emits the proxy-mode warning to stderr once per env
 // subcommand invocation. Silent on no-proxy or when marker lookup fails.
+// Consumes the ctx-cached marker so read-only subcommands (get, list) don't
+// pay a second SSH round-trip alongside the env file read.
 func maybeWarnProxyEnvMode(ctx *appContext) {
-	m, err := ReadMarker(ctx.Client, ctx.AppName)
+	m, err := ctx.Marker()
 	if err == nil && m == ModeProxy {
 		fmt.Fprint(os.Stderr, proxyEnvWarningMessage())
 	}

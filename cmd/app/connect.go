@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
@@ -21,6 +22,28 @@ type appContext struct {
 	IP          string
 	User        string
 	ComposeFile string
+
+	// markerOnce caches the ReadMarker round-trip across the lifetime of a
+	// single command invocation. Multiple call sites (maybeWarnProxyEnvMode,
+	// ResolveMode via ResolveModeFromCtx, destroy's marker check) would
+	// otherwise issue redundant SSH cats.
+	markerOnce sync.Once
+	markerMode Mode
+	markerErr  error
+}
+
+// Marker returns the on-server mode marker. On first call it performs the
+// ReadMarker round-trip and caches **both** the value and the error; every
+// subsequent call within the same command invocation returns the same pair.
+// That means a transient SSH/parse failure on the first call is pinned for
+// the rest of the command — consistent with fail-fast semantics. Safe for
+// concurrent use. Returns ErrNoMarker when .conoha-mode is absent; other
+// errors (SSH transport, ParseMarker) propagate unchanged.
+func (c *appContext) Marker() (Mode, error) {
+	c.markerOnce.Do(func() {
+		c.markerMode, c.markerErr = ReadMarker(c.Client, c.AppName)
+	})
+	return c.markerMode, c.markerErr
 }
 
 func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {

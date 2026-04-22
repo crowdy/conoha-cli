@@ -26,7 +26,7 @@ var restartCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
-		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName, ctx.ServerID)
+		mode, err := ResolveModeFromCtx(cmd, ctx)
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
 				return notInitializedError(ctx.AppName, ctx.ServerID, "")

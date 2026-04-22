@@ -197,6 +197,15 @@ func ResolveMode(cmd *cobra.Command, cli *ssh.Client, app, serverID string) (Mod
 	return resolveModeLogic(app, serverID, want, got, readErr)
 }
 
+// ResolveModeFromCtx is ResolveMode but consumes the marker cached on the
+// appContext, avoiding a second SSH round-trip when the marker has already
+// been fetched for a sibling check in the same command invocation.
+func ResolveModeFromCtx(cmd *cobra.Command, ctx *appContext) (Mode, error) {
+	want := flagMode(cmd)
+	got, readErr := ctx.Marker()
+	return resolveModeLogic(ctx.AppName, ctx.ServerID, want, got, readErr)
+}
+
 // resolveModeLogic is the pure precedence layer extracted for unit testing.
 // want is the flag-requested mode ("" if none). got/readErr come from ReadMarker.
 // Non-ErrNoMarker read errors are propagated unchanged.
