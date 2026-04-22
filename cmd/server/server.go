@@ -35,6 +35,7 @@ func init() {
 	Cmd.AddCommand(deployCmd)
 	Cmd.AddCommand(addSecurityGroupCmd)
 	Cmd.AddCommand(removeSecurityGroupCmd)
+	Cmd.AddCommand(openPortCmd)
 }
 
 func getComputeAPI(cmd *cobra.Command) (*api.ComputeAPI, error) {
