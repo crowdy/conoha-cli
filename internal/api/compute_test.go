@@ -593,6 +593,58 @@ func TestGetFlavor(t *testing.T) {
 	}
 }
 
+func TestFindFlavor(t *testing.T) {
+	const uuid = "6f3c4747-8471-4a38-902b-4c57ad76d776"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v2.1/flavors/"+uuid):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"flavor": map[string]any{"id": uuid, "name": "g2l-t-c4m4", "ram": 4096, "vcpus": 4, "disk": 0},
+			})
+		case strings.HasSuffix(r.URL.Path, "/v2.1/flavors/detail"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"flavors": []map[string]any{
+					{"id": uuid, "name": "g2l-t-c4m4", "ram": 4096, "vcpus": 4, "disk": 0},
+					{"id": "00000000-0000-0000-0000-000000000002", "name": "g2l-c2m4d100", "ram": 4096, "vcpus": 2, "disk": 100},
+				},
+			})
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+	api := NewComputeAPI(newTestClient(ts))
+
+	t.Run("by UUID", func(t *testing.T) {
+		f, err := api.FindFlavor(uuid)
+		if err != nil {
+			t.Fatalf("FindFlavor(uuid) error: %v", err)
+		}
+		if f.ID != uuid || f.Name != "g2l-t-c4m4" {
+			t.Errorf("unexpected flavor: %+v", f)
+		}
+	})
+
+	t.Run("by name", func(t *testing.T) {
+		f, err := api.FindFlavor("g2l-t-c4m4")
+		if err != nil {
+			t.Fatalf("FindFlavor(name) error: %v", err)
+		}
+		if f.ID != uuid {
+			t.Errorf("expected id %q, got %q", uuid, f.ID)
+		}
+	})
+
+	t.Run("name not found", func(t *testing.T) {
+		if _, err := api.FindFlavor("nope"); err == nil {
+			t.Errorf("expected error for unknown flavor name")
+		}
+	})
+}
+
 func TestListKeypairs(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
