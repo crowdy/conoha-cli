@@ -30,7 +30,7 @@ var statusCmd = &cobra.Command{
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
-		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName, ctx.ServerID)
+		mode, err := ResolveModeFromCtx(cmd, ctx)
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
 				return notInitializedError(ctx.AppName, ctx.ServerID, "")
@@ -44,8 +44,17 @@ var statusCmd = &cobra.Command{
 		} else {
 			psCmd = buildStatusCmdForNoProxy(ctx.AppName)
 		}
-		if _, err := internalssh.RunCommand(ctx.Client, psCmd, os.Stdout, os.Stderr); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: compose ps: %v\n", err)
+		// A non-nil err from RunCommand is an SSH-layer failure (auth, transport,
+		// channel close) — not something `compose ps` could produce by having no
+		// containers to show. Surface it as a non-zero exit so scripts that check
+		// $? don't silently get wrong information. Remote non-zero exit codes are
+		// downgraded to a warning because an empty project is a normal state.
+		code, err := internalssh.RunCommand(ctx.Client, psCmd, os.Stdout, os.Stderr)
+		if err != nil {
+			return fmt.Errorf("status (compose ps via SSH): %w", err)
+		}
+		if code != 0 {
+			fmt.Fprintf(os.Stderr, "warning: compose ps exited with code %d\n", code)
 		}
 
 		if mode != ModeProxy {

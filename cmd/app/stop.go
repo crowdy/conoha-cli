@@ -29,7 +29,7 @@ var stopCmd = &cobra.Command{
 
 		// Resolve mode + slot before the prompt so flag/marker conflicts or
 		// "not deployed" errors abort without asking the user to confirm (I3).
-		mode, err := ResolveMode(cmd, ctx.Client, ctx.AppName, ctx.ServerID)
+		mode, err := ResolveModeFromCtx(cmd, ctx)
 		if err != nil {
 			if errors.Is(err, ErrNoMarker) {
 				return notInitializedError(ctx.AppName, ctx.ServerID, "")
