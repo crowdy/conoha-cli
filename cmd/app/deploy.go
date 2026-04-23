@@ -370,13 +370,3 @@ func runRemote(cli *ssh.Client, command string, stdinData *bytes.Buffer) error {
 	}
 	return nil
 }
-
-// tearDownSlot brings down a slot's compose project and removes its work dir.
-// Best-effort; the caller already has a more interesting error to return.
-func tearDownSlot(cli *ssh.Client, app, slot string) {
-	work := fmt.Sprintf("/opt/conoha/%s/%s", app, slot)
-	cmd := fmt.Sprintf(
-		"docker compose -p %s -f '%s/conoha-override.yml' down 2>/dev/null || true; rm -rf '%s' || true",
-		slotProjectName(app, slot), work, work)
-	_, _ = internalssh.RunCommand(cli, cmd, os.Stderr, os.Stderr)
-}

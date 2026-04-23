@@ -3,13 +3,21 @@ package app
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/crowdy/conoha-cli/internal/config"
 	proxypkg "github.com/crowdy/conoha-cli/internal/proxy"
+)
+
+// Compile-time assertions: the real proxy client and our fake must both
+// satisfy DeployProxyAPI. If either drifts (e.g. Get/Deploy renamed), the
+// test binary will fail to build.
+var (
+	_ DeployOps      = (*fakeOps)(nil)
+	_ DeployProxyAPI = (*proxypkg.Client)(nil)
+	_ DeployProxyAPI = (*fakeProxyAPI)(nil)
 )
 
 // fakeOps is a DeployOps fake that records every command it receives.
@@ -77,10 +85,10 @@ func (f *fakeOps) Proxy() DeployProxyAPI {
 
 // fakeProxyAPI is a minimal DeployProxyAPI fake.
 type fakeProxyAPI struct {
-	GetCalls    int
-	DeployCalls []proxypkg.DeployRequest
-	GetReturn   *proxypkg.Service
-	GetErr      error
+	GetCalls     int
+	DeployCalls  []proxypkg.DeployRequest
+	GetReturn    *proxypkg.Service
+	GetErr       error
 	DeployReturn *proxypkg.Service
 	DeployErr    error
 }
@@ -110,8 +118,6 @@ func (f *fakeProxyAPI) Deploy(name string, req proxypkg.DeployRequest) (*proxypk
 		ActiveTarget: &proxypkg.Target{URL: req.TargetURL},
 	}, nil
 }
-
-var _ DeployOps = (*fakeOps)(nil)
 
 // baseParams constructs a minimal proxyDeployParams suitable for most tests.
 // Tests override specific fields.
@@ -263,20 +269,19 @@ func TestRunProxyDeployState_OldSlotDrainScheduled(t *testing.T) {
 	if err := runProxyDeployState(baseParams(), ops); err != nil {
 		t.Fatalf("deploy failed: %v", err)
 	}
-	// Should schedule drain teardown for "prev5678", referencing the drain ms.
-	var scheduled string
+	// The old slot's compose project must be the target of the drain
+	// teardown — buildScheduleDrainCmd embeds the slot name in the project
+	// (myapp-prev5678) and in the work dir (/opt/conoha/myapp/prev5678).
+	mustPresent(t, ops.Commands, "myapp-prev5678")
+	mustPresent(t, ops.Commands, "/opt/conoha/myapp/prev5678")
+	// The NEW slot must NOT be torn down on the success path — a regression
+	// that inverted old/new would still leak the app live but kill it mid-
+	// drain. Guard that explicitly.
 	for _, c := range ops.Commands {
-		if strings.Contains(c.Cmd, "schedule") || strings.Contains(c.Cmd, "sleep 2") {
-			scheduled = c.Cmd
+		if strings.Contains(c.Cmd, "myapp-abc1234") && strings.Contains(c.Cmd, " down ") {
+			t.Errorf("new slot abc1234 was torn down on success path: %q", c.Cmd)
 		}
 	}
-	// Accept either phrasing — buildScheduleDrainCmd's exact shape is a
-	// separate concern; the contract under test is "something referencing
-	// the old slot gets run".
-	if !strings.Contains(strings.Join(commandTexts(ops.Commands), "\n"), "prev5678") {
-		t.Errorf("expected old slot 'prev5678' to be referenced in scheduled teardown. Commands:\n%s", strings.Join(commandTexts(ops.Commands), "\n"))
-	}
-	_ = scheduled
 }
 
 func TestRunProxyDeployState_InvalidCurrentSlot_IgnoresWithWarning(t *testing.T) {
@@ -344,17 +349,4 @@ func mustAbsent(t *testing.T, cs []fakeOpsCall, sub string) {
 			return
 		}
 	}
-}
-
-// Sanity: make sure our fake doesn't drift away from the real proxypkg.Client
-// surface. This is a nil assertion — the real thing implements DeployProxyAPI.
-func TestDeployProxyAPI_MatchesProxyClient(t *testing.T) {
-	// If proxypkg.Client stops implementing DeployProxyAPI (e.g. by removing
-	// Deploy or Get), this line fails to compile in the test binary.
-	var _ DeployProxyAPI = (*proxypkg.Client)(nil)
-
-	// And vice-versa: keep our fake honest.
-	var _ DeployProxyAPI = (*fakeProxyAPI)(nil)
-
-	_ = fmt.Sprintf
 }
