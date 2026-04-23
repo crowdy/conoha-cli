@@ -102,9 +102,14 @@ func runInitProxy(cmd *cobra.Command, serverID string) error {
 }
 
 // touchEnvFile creates an empty /opt/conoha/<app>/.env.server if it doesn't
-// already exist. Idempotent; re-running app init is safe.
+// already exist and enforces 0600 mode (file may hold credentials; `touch`
+// alone honors umask, typically 0644). Idempotent; re-running app init is
+// safe.
 func touchEnvFile(cli *ssh.Client, app string) error {
-	command := fmt.Sprintf("mkdir -p '/opt/conoha/%s' && touch '/opt/conoha/%s/.env.server'", app, app)
+	command := fmt.Sprintf(
+		"mkdir -p '/opt/conoha/%s' && touch '/opt/conoha/%s/.env.server' && chmod 600 '/opt/conoha/%s/.env.server'",
+		app, app, app,
+	)
 	code, err := internalssh.RunCommand(cli, command, os.Stderr, os.Stderr)
 	if err != nil {
 		return err

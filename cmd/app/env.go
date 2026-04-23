@@ -108,15 +108,37 @@ var envSetCmd = &cobra.Command{
 	},
 }
 
+// legacyOnlyGuardScript aborts the calling script when only the legacy env
+// file exists. Without this guard, writing to $NEW_ENV would create a second
+// file, and the deploy-time "new wins if present" logic would silently hide
+// any KEY=VALUE previously stored in legacy — unrecoverable without backups.
+func legacyOnlyGuardScript(appName string) string {
+	return fmt.Sprintf(
+		`NEW_ENV=%q
+LEGACY_ENV=%q
+if [ ! -f "$NEW_ENV" ] && [ -f "$LEGACY_ENV" ]; then
+    echo "error: legacy env file $LEGACY_ENV exists but $NEW_ENV does not." >&2
+    echo "Writing here would silently hide legacy values on next deploy." >&2
+    echo "Run 'conoha app env migrate <server>' first, then retry." >&2
+    exit 2
+fi
+`, envFilePath(appName), legacyEnvFilePath(appName))
+}
+
 func generateEnvSetScript(appName string, env map[string]string) []byte {
 	var b strings.Builder
 	b.WriteString("#!/bin/bash\nset -euo pipefail\n")
-	// Writes always go to the new location. Legacy servers get a one-time
-	// migrate path via 'conoha app env migrate' — set intentionally does not
-	// auto-copy legacy content to avoid overwriting it.
+	// Guard against legacy-only state (data-loss prevention). Then write to
+	// the new canonical location only — migrate is the explicit path for
+	// legacy content movement.
+	b.WriteString(legacyOnlyGuardScript(appName))
 	fmt.Fprintf(&b, "mkdir -p '/opt/conoha/%s'\n", appName)
 	fmt.Fprintf(&b, "ENV_FILE=%q\n", envFilePath(appName))
 	b.WriteString("touch \"$ENV_FILE\"\n")
+	// Enforce 0600 on every write; `touch` honors umask (usually 0644) and
+	// `mv` preserves the source mode, neither of which is appropriate for a
+	// file that may contain credentials.
+	b.WriteString("chmod 600 \"$ENV_FILE\"\n")
 
 	keys := make([]string, 0, len(env))
 	for k := range env {
@@ -130,6 +152,7 @@ func generateEnvSetScript(appName string, env map[string]string) []byte {
 		escaped := strings.ReplaceAll(v, "'", "'\\''")
 		fmt.Fprintf(&b, "echo '%s=%s' >> \"$ENV_FILE.tmp\"\n", k, escaped)
 		b.WriteString("mv \"$ENV_FILE.tmp\" \"$ENV_FILE\"\n")
+		b.WriteString("chmod 600 \"$ENV_FILE\"\n")
 	}
 	return []byte(b.String())
 }
@@ -231,6 +254,9 @@ var envUnsetCmd = &cobra.Command{
 func generateEnvUnsetScript(appName string, keys []string) []byte {
 	var b strings.Builder
 	b.WriteString("#!/bin/bash\nset -euo pipefail\n")
+	// Symmetric with set: refuse on legacy-only state so unset can't silently
+	// act on a file that will be hidden at deploy time.
+	b.WriteString(legacyOnlyGuardScript(appName))
 	b.WriteString(effectiveEnvFileScript(appName))
 	b.WriteString("[ -f \"$ENV_FILE\" ] || exit 0\n")
 	b.WriteString("cp \"$ENV_FILE\" \"$ENV_FILE.tmp\"\n")
@@ -239,6 +265,7 @@ func generateEnvUnsetScript(appName string, keys []string) []byte {
 		b.WriteString("mv \"$ENV_FILE.tmp2\" \"$ENV_FILE.tmp\"\n")
 	}
 	b.WriteString("mv \"$ENV_FILE.tmp\" \"$ENV_FILE\"\n")
+	b.WriteString("chmod 600 \"$ENV_FILE\"\n")
 	return []byte(b.String())
 }
 
@@ -291,6 +318,7 @@ fi
 
 mkdir -p "$(dirname "$NEW_ENV")"
 mv "$LEGACY_ENV" "$NEW_ENV"
+chmod 600 "$NEW_ENV"
 echo "Migrated: $LEGACY_ENV -> $NEW_ENV"
 `, envFilePath(appName), legacyEnvFilePath(appName)))
 }

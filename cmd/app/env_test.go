@@ -27,15 +27,26 @@ func TestGenerateEnvSetScript(t *testing.T) {
 		"touch",
 		"DB_HOST=localhost",
 		"DB_PORT=5432",
+		// Data-loss guard must appear; the script must abort on legacy-only.
+		`exit 2`,
+		`'conoha app env migrate`,
+		// Credentials-bearing file: 0600 enforced.
+		`chmod 600 "$ENV_FILE"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in script:\n%s", want, s)
 		}
 	}
-	// Set writes to new path only; legacy path must not appear in a write
-	// context (it still shows up on the read side for backward compat).
-	if strings.Contains(s, legacyEnvFilePath("myapp")) {
-		t.Errorf("set script should not reference the legacy path: %s", s)
+	// Write target must be the new path only. Legacy appears in the guard
+	// as a source-side check, never on the left side of a write-redirect.
+	for _, forbidden := range []string{
+		`> "/opt/conoha/myapp.env.server"`,
+		`>> "/opt/conoha/myapp.env.server"`,
+		`mv "$ENV_FILE.tmp" "/opt/conoha/myapp.env.server"`,
+	} {
+		if strings.Contains(s, forbidden) {
+			t.Errorf("set script must not write to legacy path (%q):\n%s", forbidden, s)
+		}
 	}
 }
 
@@ -48,9 +59,28 @@ func TestGenerateEnvUnsetScript(t *testing.T) {
 		"LEGACY_ENV=\"/opt/conoha/myapp.env.server\"",
 		`grep -v "^DB_HOST="`,
 		`grep -v "^DB_PORT="`,
+		// Data-loss guard symmetric with set.
+		`exit 2`,
+		// Mode enforced after the final mv.
+		`chmod 600 "$ENV_FILE"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in unset script:\n%s", want, s)
+		}
+	}
+}
+
+func TestLegacyOnlyGuardRejects(t *testing.T) {
+	s := legacyOnlyGuardScript("myapp")
+	for _, want := range []string{
+		`NEW_ENV="/opt/conoha/myapp/.env.server"`,
+		`LEGACY_ENV="/opt/conoha/myapp.env.server"`,
+		`if [ ! -f "$NEW_ENV" ] && [ -f "$LEGACY_ENV" ]`,
+		`Writing here would silently hide legacy values`,
+		`exit 2`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in guard script:\n%s", want, s)
 		}
 	}
 }
@@ -89,6 +119,9 @@ func TestGenerateEnvMigrateScript(t *testing.T) {
 		"Nothing to migrate",
 		"Both",
 		`mv "$LEGACY_ENV" "$NEW_ENV"`,
+		// `mv` preserves the source mode; enforce 0600 post-move since the
+		// legacy path may have been 0644 on old servers.
+		`chmod 600 "$NEW_ENV"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in migrate script:\n%s", want, s)
