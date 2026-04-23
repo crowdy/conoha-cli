@@ -26,12 +26,12 @@ func TestPrintAppList_Formatting(t *testing.T) {
 			ActiveTarget: &proxypkg.Target{
 				URL: "http://127.0.0.1:34567",
 			},
-			Phase: proxypkg.Phase("active"),
+			Phase: proxypkg.PhaseLive,
 		},
 		{
 			Name:  "staging",
 			Hosts: []string{"staging.example.com", "alt.example.com"},
-			Phase: proxypkg.Phase("pending"),
+			Phase: proxypkg.PhaseConfigured,
 		},
 	}
 
@@ -43,26 +43,44 @@ func TestPrintAppList_Formatting(t *testing.T) {
 	out := buf.String()
 	for _, want := range []string{
 		"NAME", "PHASE", "ACTIVE", "HOSTS",
-		"myapp", "app.example.com", "http://127.0.0.1:34567", "active",
-		"staging", "staging.example.com,alt.example.com", "pending",
+		"myapp", "app.example.com", "http://127.0.0.1:34567", "live",
+		"staging", "staging.example.com,alt.example.com", "configured",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
 
-	// No target → "-" placeholder.
+	// Row-shape check: myapp row must have PHASE=live positioned between
+	// the name and the active URL (catches a column-swap bug that whole-
+	// buffer Contains would miss).
 	lines := strings.Split(out, "\n")
-	foundStaging := false
+	var myappRow, stagingRow string
 	for _, l := range lines {
-		if strings.HasPrefix(l, "staging") {
-			foundStaging = true
-			if !strings.Contains(l, "-") {
-				t.Errorf("staging row should show '-' for active target: %q", l)
-			}
+		switch {
+		case strings.HasPrefix(l, "myapp"):
+			myappRow = l
+		case strings.HasPrefix(l, "staging"):
+			stagingRow = l
 		}
 	}
-	if !foundStaging {
-		t.Error("staging row not found in output")
+	if myappRow == "" {
+		t.Fatal("myapp row not found")
+	}
+	if stagingRow == "" {
+		t.Fatal("staging row not found")
+	}
+
+	// PHASE column must sit between NAME and ACTIVE in the myapp row.
+	idxName := strings.Index(myappRow, "myapp")
+	idxPhase := strings.Index(myappRow, "live")
+	idxActive := strings.Index(myappRow, "http://")
+	if !(idxName < idxPhase && idxPhase < idxActive) {
+		t.Errorf("column order broken in myapp row: %q", myappRow)
+	}
+
+	// No target → "-" placeholder in ACTIVE column.
+	if !strings.Contains(stagingRow, " - ") {
+		t.Errorf("staging row should show '-' for active target: %q", stagingRow)
 	}
 }

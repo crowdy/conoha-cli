@@ -79,9 +79,14 @@ here — use 'ssh <server> ls /opt/conoha/' manually.`,
 		admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
 		services, err := admin.List()
 		if err != nil {
-			return fmt.Errorf("list services: %w", err)
+			return fmt.Errorf("list services (is conoha-proxy running on %s? try 'conoha proxy status %s'): %w", args[0], args[0], err)
 		}
 
+		if len(services) == 0 {
+			fmt.Fprintf(os.Stderr, "no proxy-managed apps registered on %s\n", args[0])
+			fmt.Fprintln(os.Stderr, "  for v0.1.x apps never migrated to the proxy model, run:")
+			fmt.Fprintf(os.Stderr, "    ssh %s ls /opt/conoha/\n", args[0])
+		}
 		return printAppList(os.Stdout, services)
 	},
 }
