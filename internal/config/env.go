@@ -17,6 +17,7 @@ const (
 	EnvDebug        = "CONOHA_DEBUG"
 	EnvYes          = "CONOHA_YES"
 	EnvNoColor      = "CONOHA_NO_COLOR"
+	EnvSSHInsecure  = "CONOHA_SSH_INSECURE"
 )
 
 // EnvOr returns the environment variable value if set, otherwise the fallback.
@@ -45,4 +46,11 @@ func IsNoColor() bool {
 	}
 	_, noColor := os.LookupEnv("NO_COLOR")
 	return noColor
+}
+
+// IsSSHInsecure returns true when SSH host-key verification should be
+// disabled (InsecureIgnoreHostKey). Set via --insecure flag or the env var.
+// Default false — real known_hosts verification with TOFU fallback.
+func IsSSHInsecure() bool {
+	return os.Getenv(EnvSSHInsecure) == "1" || os.Getenv(EnvSSHInsecure) == "true"
 }

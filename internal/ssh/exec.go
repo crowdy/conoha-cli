@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/crowdy/conoha-cli/internal/config"
 )
 
 // ConnectConfig holds SSH connection parameters.
@@ -17,6 +19,12 @@ type ConnectConfig struct {
 	Port    string // default "22"
 	User    string // default "root"
 	KeyPath string // path to private key file
+
+	// Insecure disables host-key verification. When false (the default),
+	// the connection uses ~/.ssh/known_hosts with TOFU on first connect.
+	// Callers typically leave this false and let the global --insecure flag
+	// flip config.IsSSHInsecure() instead.
+	Insecure bool
 }
 
 // Connect establishes an SSH connection.
@@ -38,15 +46,21 @@ func Connect(cfg ConnectConfig) (*ssh.Client, error) {
 		return nil, fmt.Errorf("parse key %s: %w", cfg.KeyPath, err)
 	}
 
-	config := &ssh.ClientConfig{
+	insecure := cfg.Insecure || config.IsSSHInsecure()
+	hostKeyCB, err := HostKeyCallback(insecure, config.IsNoInput())
+	if err != nil {
+		return nil, err
+	}
+
+	clientCfg := &ssh.ClientConfig{
 		User:            cfg.User,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // personal VPS use
+		HostKeyCallback: hostKeyCB,
 		Timeout:         30 * time.Second,
 	}
 
 	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
-	return ssh.Dial("tcp", addr, config)
+	return ssh.Dial("tcp", addr, clientCfg)
 }
 
 // RunScript uploads and executes a script on the remote server.

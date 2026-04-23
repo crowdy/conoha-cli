@@ -31,13 +31,14 @@ import (
 var (
 	version = "dev"
 
-	flagProfile string
-	flagFormat  string
-	flagNoInput bool
-	flagQuiet   bool
-	flagVerbose bool
-	flagNoColor bool
-	flagYes     bool
+	flagProfile     string
+	flagFormat      string
+	flagNoInput     bool
+	flagQuiet       bool
+	flagVerbose     bool
+	flagNoColor     bool
+	flagYes         bool
+	flagSSHInsecure bool
 )
 
 // rootCmd is the base command.
@@ -61,6 +62,9 @@ var rootCmd = &cobra.Command{
 		if flagNoColor {
 			_ = os.Setenv(config.EnvNoColor, "1")
 		}
+		if flagSSHInsecure {
+			_ = os.Setenv(config.EnvSSHInsecure, "1")
+		}
 	},
 }
 
@@ -79,6 +83,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "disable color output")
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "skip confirmation prompts")
+	rootCmd.PersistentFlags().BoolVar(&flagSSHInsecure, "insecure", false, "disable SSH host-key verification (not recommended; for lab / throwaway VPS)")
 	rootCmd.PersistentFlags().Bool("no-headers", false, "hide table/CSV headers")
 	rootCmd.PersistentFlags().StringArray("filter", nil, "filter rows by key=value (repeatable)")
 	rootCmd.PersistentFlags().String("sort-by", "", "sort rows by field name")
