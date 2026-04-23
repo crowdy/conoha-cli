@@ -86,7 +86,7 @@ image vmi-docker-* for a ready-made base.`,
 		}
 
 		if skipReboot {
-			fmt.Fprintln(os.Stderr, "==> --skip-reboot set; driver load deferred. Run 'conoha server reboot' manually to activate.")
+			fmt.Fprintf(os.Stderr, "==> --skip-reboot set; driver load deferred. Run 'conoha server reboot %s --wait' to load the new driver.\n", s.Name)
 			return nil
 		}
 
@@ -160,19 +160,26 @@ func waitForReboot(compute *api.ComputeAPI, id string, wc *cmdutil.WaitConfig) e
 
 // waitForSSH polls SSH connect until it succeeds or timeout elapses. The
 // server may be ACTIVE before sshd binds — especially on first boot after a
-// kernel module change.
+// kernel module change. Uses cmdutil.WaitFor for progress output and Ctrl-C
+// handling.
 func waitForSSH(cfg internalssh.ConnectConfig, timeout time.Duration) (*ssh.Client, error) {
-	deadline := time.Now().Add(timeout)
-	var lastErr error
-	for time.Now().Before(deadline) {
-		cli, err := internalssh.Connect(cfg)
-		if err == nil {
-			return cli, nil
+	var cli *ssh.Client
+	err := cmdutil.WaitFor(cmdutil.WaitConfig{
+		Resource: "SSH " + cfg.Host,
+		Timeout:  timeout,
+		Interval: 5 * time.Second,
+	}, func() (bool, string, error) {
+		c, e := internalssh.Connect(cfg)
+		if e == nil {
+			cli = c
+			return true, "", nil
 		}
-		lastErr = err
-		time.Sleep(5 * time.Second)
+		return false, "dialing", nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("SSH never came back within %s: %w", timeout, lastErr)
+	return cli, nil
 }
 
 // gpuInstallScript returns the bash script that installs the NVIDIA Container
@@ -210,8 +217,12 @@ apt-get update -y
 apt-get install -y nvidia-container-toolkit
 
 echo "==> Configuring docker runtime..."
-nvidia-ctk runtime configure --runtime=docker
-systemctl restart docker
+if ! grep -q '"nvidia"' /etc/docker/daemon.json 2>/dev/null; then
+    nvidia-ctk runtime configure --runtime=docker
+    systemctl restart docker
+else
+    echo "    nvidia runtime already configured; skipping docker restart"
+fi
 
 echo "==> Installing NVIDIA datacenter driver via ubuntu-drivers..."
 apt-get install -y ubuntu-drivers-common
