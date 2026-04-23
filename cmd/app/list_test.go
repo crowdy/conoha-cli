@@ -75,7 +75,7 @@ func TestPrintAppList_Formatting(t *testing.T) {
 	idxName := strings.Index(myappRow, "myapp")
 	idxPhase := strings.Index(myappRow, "live")
 	idxActive := strings.Index(myappRow, "http://")
-	if !(idxName < idxPhase && idxPhase < idxActive) {
+	if idxName >= idxPhase || idxPhase >= idxActive {
 		t.Errorf("column order broken in myapp row: %q", myappRow)
 	}
 

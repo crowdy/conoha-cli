@@ -83,9 +83,9 @@ here — use 'ssh <server> ls /opt/conoha/' manually.`,
 		}
 
 		if len(services) == 0 {
-			fmt.Fprintf(os.Stderr, "no proxy-managed apps registered on %s\n", args[0])
-			fmt.Fprintln(os.Stderr, "  for v0.1.x apps never migrated to the proxy model, run:")
-			fmt.Fprintf(os.Stderr, "    ssh %s ls /opt/conoha/\n", args[0])
+			_, _ = fmt.Fprintf(os.Stderr, "no proxy-managed apps registered on %s\n", args[0])
+			_, _ = fmt.Fprintln(os.Stderr, "  for v0.1.x apps never migrated to the proxy model, run:")
+			_, _ = fmt.Fprintf(os.Stderr, "    ssh %s ls /opt/conoha/\n", args[0])
 		}
 		return printAppList(os.Stdout, services)
 	},
@@ -99,14 +99,16 @@ func printAppList(w io.Writer, services []proxypkg.Service) error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tPHASE\tACTIVE\tHOSTS")
+	// tabwriter.Writer returns an error only if the underlying writer does;
+	// defer surfacing it until Flush().
+	_, _ = fmt.Fprintln(tw, "NAME\tPHASE\tACTIVE\tHOSTS")
 	for _, svc := range services {
 		active := "-"
 		if svc.ActiveTarget != nil {
 			active = svc.ActiveTarget.URL
 		}
 		hosts := strings.Join(svc.Hosts, ",")
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", svc.Name, svc.Phase, active, hosts)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", svc.Name, svc.Phase, active, hosts)
 	}
 	return tw.Flush()
 }
