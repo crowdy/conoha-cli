@@ -1,0 +1,32 @@
+# Target image for the conoha-cli E2E harness.
+#
+# This image mimics a freshly-provisioned ConoHa VPS: Ubuntu 24.04 with
+# dockerd + sshd running. The CLI drives it exactly like a real server:
+# it SSHes in, installs nothing (docker is already present, so the
+# `conoha proxy boot` curl|sh branch is skipped), and runs the
+# conoha-proxy container via docker-in-docker.
+#
+# Requires --privileged and --cgroupns=host when run because of DinD.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        ca-certificates curl openssh-server sudo iproute2 iptables uidmap kmod \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://get.docker.com | sh
+
+RUN sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config \
+ && sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config \
+ && sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config \
+ && mkdir -p /run/sshd /root/.ssh \
+ && chmod 700 /root/.ssh
+
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 22 80 443
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

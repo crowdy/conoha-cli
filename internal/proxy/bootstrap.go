@@ -31,9 +31,13 @@ if docker inspect %[4]s >/dev/null 2>&1; then
 fi
 
 echo "==> Starting %[4]s from %[2]s"
+# --network host is required: CLI's app deploy probes slots at
+# http://127.0.0.1:<slot-port>, which only resolves to the slot when the
+# proxy shares the host loopback. Bridge-networked containers would see
+# their own loopback and the probe would fail (spec 2026-04-20 §5 step 10).
 docker run -d --name %[4]s \
   --restart unless-stopped \
-  -p 80:80 -p 443:443 \
+  --network host \
   -v %[3]s:%[3]s \
   %[2]s \
   run --acme-email=%[1]s
@@ -57,9 +61,10 @@ if docker inspect %[4]s >/dev/null 2>&1; then
 fi
 
 echo "==> Starting new %[4]s from %[2]s"
+# See BootScript for why --network host is required.
 docker run -d --name %[4]s \
   --restart unless-stopped \
-  -p 80:80 -p 443:443 \
+  --network host \
   -v %[3]s:%[3]s \
   %[2]s \
   run --acme-email=%[1]s

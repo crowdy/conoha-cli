@@ -16,8 +16,7 @@ func TestBootScript_ContainsEssentials(t *testing.T) {
 		"set -euo pipefail",
 		"mkdir -p /var/lib/conoha-proxy",
 		"chown 65532:65532 /var/lib/conoha-proxy",
-		"-p 80:80",
-		"-p 443:443",
+		"--network host",
 		"-v /var/lib/conoha-proxy:/var/lib/conoha-proxy",
 		"ghcr.io/crowdy/conoha-proxy:latest",
 		"--acme-email=ops@example.com",
@@ -40,6 +39,7 @@ func TestRebootScript_PullsStopsRemovesStarts(t *testing.T) {
 		"docker pull ghcr.io/crowdy/conoha-proxy:latest",
 		"docker stop conoha-proxy",
 		"docker rm conoha-proxy",
+		"--network host",
 		"--acme-email=ops@example.com",
 	} {
 		if !strings.Contains(s, want) {
