@@ -116,10 +116,12 @@ func buildNoProxyUploadCmd(workDir string) string {
 // buildNoProxyDeployCmd brings the flat-layout compose project up in place.
 // The compose project name equals the app name (no slot suffix).
 //
-// Env merge (v0.1.x parity, spec §3.6): appends /opt/conoha/<app>.env.server
-// (written by `conoha app env set`) to <workDir>/.env so server-side values
-// win over repo-level ones via last-occurrence semantics. This is the
-// expected precedence for runtime-secret override.
+// Env merge (v0.2+, spec 2026-04-23-app-env-redesign.md §2.3):
+// appends /opt/conoha/<app>/.env.server (new canonical location) to
+// <workDir>/.env. When that file is absent but the v0.1.x path
+// /opt/conoha/<app>.env.server exists, the legacy path is used and a
+// deprecation warning is emitted to stderr. `app env migrate` moves
+// users forward.
 //
 // Because buildNoProxyUploadCmd cleared any prior merged .env before tar
 // extraction, each deploy starts from the repo's committed .env (if any)
@@ -130,13 +132,19 @@ func buildNoProxyUploadCmd(workDir string) string {
 // composeFile is defensively single-quoted — today it comes from the
 // ResolveComposeFile whitelist, but quoting hardens against future callers.
 func buildNoProxyDeployCmd(workDir, app, composeFile string) string {
-	envServer := fmt.Sprintf("/opt/conoha/%s.env.server", app)
+	newEnv := envFilePath(app)
+	legacyEnv := legacyEnvFilePath(app)
 	return fmt.Sprintf(
 		"cd '%s' && { "+
 			"touch .env; "+
-			"if [ -s '%s' ]; then printf '\\n' >> .env && cat '%s' >> .env; fi; "+
+			"if [ -s '%s' ]; then "+
+			"    printf '\\n' >> .env && cat '%s' >> .env; "+
+			"elif [ -s '%s' ]; then "+
+			"    echo 'warning: merging legacy env file %s (run conoha app env migrate <server> to move it)' >&2; "+
+			"    printf '\\n' >> .env && cat '%s' >> .env; "+
+			"fi; "+
 			"} && docker compose -p %s -f '%s' up -d --build",
-		workDir, envServer, envServer, app, composeFile)
+		workDir, newEnv, newEnv, legacyEnv, legacyEnv, legacyEnv, app, composeFile)
 }
 
 func runProxyDeploy(cmd *cobra.Command, serverID string) error {

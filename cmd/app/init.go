@@ -92,7 +92,26 @@ func runInitProxy(cmd *cobra.Command, serverID string) error {
 	if err := WriteMarker(sshClient, pf.Name, ModeProxy); err != nil {
 		return fmt.Errorf("write mode marker: %w", err)
 	}
+	// Touch an empty .env.server so the compose override's env_file: entry
+	// resolves on first deploy. Subsequent `app env set` grows the file.
+	if err := touchEnvFile(sshClient, pf.Name); err != nil {
+		return fmt.Errorf("touching env stub: %w", err)
+	}
 	fmt.Fprintf(os.Stderr, "Next: run 'conoha app deploy %s' to push your app.\n", serverID)
+	return nil
+}
+
+// touchEnvFile creates an empty /opt/conoha/<app>/.env.server if it doesn't
+// already exist. Idempotent; re-running app init is safe.
+func touchEnvFile(cli *ssh.Client, app string) error {
+	command := fmt.Sprintf("mkdir -p '/opt/conoha/%s' && touch '/opt/conoha/%s/.env.server'", app, app)
+	code, err := internalssh.RunCommand(cli, command, os.Stderr, os.Stderr)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("touch env: exit %d", code)
+	}
 	return nil
 }
 
@@ -129,6 +148,11 @@ func runInitNoProxy(cmd *cobra.Command, serverID string) error {
 	fmt.Fprintf(os.Stderr, "==> Initializing %q on %s (%s) in no-proxy mode\n", appName, s.Name, ip)
 	if err := WriteMarker(sshClient, appName, ModeNoProxy); err != nil {
 		return err
+	}
+	// Touch an empty .env.server so `app env set` / deploy merges always
+	// have a well-known file to read (even on first deploy).
+	if err := touchEnvFile(sshClient, appName); err != nil {
+		return fmt.Errorf("touching env stub: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "Initialized. Next: run 'conoha app deploy --no-proxy --app-name %s %s'\n", appName, serverID)
 	return nil

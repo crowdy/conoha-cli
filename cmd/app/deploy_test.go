@@ -24,8 +24,11 @@ func TestBuildNoProxyDeployCmd(t *testing.T) {
 		"docker compose -p myapp",
 		"-f 'compose.yml'",
 		"up -d --build",
-		// .env.server appended to .env so server-side values override repo (spec §3.6).
+		// .env.server merged into .env: new canonical path (v0.2+) preferred,
+		// legacy path used as read fallback with a deprecation warning.
+		"/opt/conoha/myapp/.env.server",
 		"/opt/conoha/myapp.env.server",
+		"warning: merging legacy env file",
 		">> .env",
 	} {
 		if !strings.Contains(got, want) {
