@@ -13,6 +13,8 @@ func TestComposeOverride_WebPortAndName_NoAccessories(t *testing.T) {
 		`    container_name: myapp-a1b2c3d-web`,
 		`    ports:`,
 		`      - "127.0.0.1:0:8080"`,
+		`    env_file:`,
+		`      - /opt/conoha/myapp/.env.server`,
 	}
 	for _, line := range want {
 		if !strings.Contains(got, line) {
