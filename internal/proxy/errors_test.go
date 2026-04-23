@@ -76,7 +76,6 @@ func TestParseAPIError_MalformedBody(t *testing.T) {
 	}
 }
 
-
 func TestParseAPIError_ProbeFailed(t *testing.T) {
 	err := ParseAPIError(424, []byte(`{"error":{"code":"probe_failed","message":"upstream /up returned 500"}}`))
 	var pe *ProbeFailedError
