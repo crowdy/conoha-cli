@@ -77,7 +77,7 @@ image vmi-docker-* for a ready-made base.`,
 
 		// Phase 1: install toolkit + driver.
 		code, err := internalssh.RunScript(sshClient, gpuInstallScript(), nil, os.Stdout, os.Stderr)
-		sshClient.Close()
+		_ = sshClient.Close()
 		if err != nil {
 			return fmt.Errorf("install script: %w", err)
 		}
@@ -105,7 +105,7 @@ image vmi-docker-* for a ready-made base.`,
 		if err != nil {
 			return err
 		}
-		defer sshClient.Close()
+		defer func() { _ = sshClient.Close() }()
 
 		// Phase 4: install nvidia-utils + verify.
 		code, err = internalssh.RunScript(sshClient, gpuVerifyScript(), nil, os.Stdout, os.Stderr)
