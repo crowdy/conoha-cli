@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -29,9 +30,11 @@ var resetCmd = &cobra.Command{
 want to discard the current deployment state (slots, work dirs, env files)
 and re-apply the current conoha.yml + repo from scratch.
 
-Proxy mode: compose down for every slot + accessory, rm -rf work dir,
-DELETE /v1/services/<name>, re-upsert the service, then run a fresh
-blue/green deploy.
+Proxy mode order is DELETE /v1/services/<name> first, then compose
+down for every slot + accessory, then rm -rf work dir. Dropping the
+proxy registration before killing containers means in-flight requests
+see 404 (no such service) for a moment rather than 502 (upstream dead)
+for the duration of the teardown.
 
 No-proxy mode: compose down, rm -rf work dir, re-init the marker,
 then re-deploy.
@@ -47,27 +50,17 @@ deadline is discarded as part of the destroy phase.`,
 		}
 		defer func() { _ = ctx.Client.Close() }()
 
-		mode, modeErr := ResolveModeFromCtx(cmd, ctx)
-		if modeErr != nil && !errors.Is(modeErr, ErrNoMarker) {
-			return modeErr
-		}
-
-		// If no marker but conoha.yml is present, treat as legacy proxy app
-		// (mirrors destroy.go's fallback so we don't leak proxy registrations).
-		legacyProxy := false
+		mode, legacyProxy, modeErr := ResolveAppModeWithLegacyFallback(cmd, ctx)
 		if errors.Is(modeErr, ErrNoMarker) {
-			if pf, pfErr := config.LoadProjectFile(config.ProjectFileName); pfErr == nil && pf.Validate() == nil {
-				legacyProxy = true
-				fmt.Fprintln(os.Stderr, "==> No mode marker; treating as legacy proxy deployment")
-				mode = ModeProxy
-			} else {
-				return notInitializedError(ctx.AppName, serverID, "")
-			}
+			return notInitializedError(ctx.AppName, serverID, "")
+		}
+		if modeErr != nil {
+			return modeErr
 		}
 
 		yes, _ := cmd.Flags().GetBool("yes")
 		if !yes {
-			ok, err := prompt.Confirm(fmt.Sprintf("Reset app %q on %s? All slot data + env files will be deleted before the fresh deploy.", ctx.AppName, ctx.Server.Name))
+			ok, err := prompt.Confirm(resetConfirmationMessage(ctx.AppName, ctx.Server.Name, mode, legacyProxy))
 			if err != nil {
 				return err
 			}
@@ -86,7 +79,9 @@ deadline is discarded as part of the destroy phase.`,
 		// --- Phase 2: re-init ---
 		fmt.Fprintln(os.Stderr, "==> Phase 2/3: re-initializing")
 		if err := resetInit(cmd, ctx, mode, serverID); err != nil {
-			return fmt.Errorf("init phase: %w", err)
+			// Phase 1 already removed containers + proxy registration. The app
+			// is recoverable manually, but users won't know how. Spell it out.
+			return fmt.Errorf("init phase: %w\n\nPhase 1 completed (containers destroyed, proxy deregistered). To recover, run:\n    conoha app init %s && conoha app deploy %s", err, serverID, serverID)
 		}
 
 		// --- Phase 3: deploy ---
@@ -97,13 +92,13 @@ deadline is discarded as part of the destroy phase.`,
 		switch mode {
 		case ModeProxy:
 			if err := runProxyDeploy(cmd, serverID); err != nil {
-				return fmt.Errorf("deploy phase: %w", err)
+				return fmt.Errorf("deploy phase: %w\n\nPhases 1-2 completed (service re-registered). To retry the deploy only, run:\n    conoha app deploy %s", err, serverID)
 			}
 		case ModeNoProxy:
 			// runNoProxyDeploy requires an SSH client from connectToServer;
 			// replicate the no-proxy dispatch path with this cmd.
 			if err := runResetNoProxyDeploy(cmd, serverID, ctx.AppName); err != nil {
-				return fmt.Errorf("deploy phase: %w", err)
+				return fmt.Errorf("deploy phase: %w\n\nPhases 1-2 completed. To retry the deploy only, run:\n    conoha app deploy --no-proxy --app-name %s %s", err, ctx.AppName, serverID)
 			}
 		default:
 			return fmt.Errorf("unreachable: mode %q after init", mode)
@@ -114,10 +109,53 @@ deadline is discarded as part of the destroy phase.`,
 	},
 }
 
+// resetConfirmationMessage returns the prompt shown before a reset. It spells
+// out the mode, the proxy-dereg side effect, and the loss of any open rollback
+// window, so users don't fat-finger a destructive command expecting the
+// rollback-window safety net they'd get from a plain deploy.
+func resetConfirmationMessage(app, serverName string, mode Mode, legacyProxy bool) string {
+	modeLabel := string(mode)
+	if legacyProxy {
+		modeLabel = "proxy (legacy, no marker)"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Reset app %q on %s (mode=%s)?", app, serverName, modeLabel)
+	b.WriteString("\n  - all slots will be torn down (compose down + rm -rf /opt/conoha/")
+	b.WriteString(app)
+	b.WriteString(")")
+	b.WriteString("\n  - env files (.env.server) will be deleted")
+	if mode == ModeProxy || legacyProxy {
+		b.WriteString("\n  - proxy registration will be dropped")
+		b.WriteString("\n  - any pending rollback window will be discarded")
+	}
+	return b.String()
+}
+
 // resetDestroy runs the same cleanup steps as 'app destroy' without the
 // prompt (the reset prompt already covered it) and without tearing down the
 // caller's SSH client.
+//
+// Phase order: for proxy mode, DELETE /v1/services FIRST so the proxy stops
+// routing to the about-to-be-killed containers; then tear down containers +
+// work dir. Destroying containers first would leave the proxy pointing at
+// dead upstreams (502s) for the duration of the SSH script.
 func resetDestroy(cmd *cobra.Command, ctx *appContext, mode Mode, legacyProxy bool) error {
+	if mode == ModeProxy || legacyProxy {
+		dataDir, _ := cmd.Flags().GetString("data-dir")
+		if dataDir == "" {
+			dataDir = proxy.DefaultDataDir
+		}
+		admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: ctx.Client}, proxy.SocketPath(dataDir))
+		pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
+		if pfErr == nil && pf.Validate() == nil {
+			if err := admin.Delete(pf.Name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
+				fmt.Fprintf(os.Stderr, "warning: proxy delete %s: %v (continuing with teardown)\n", pf.Name, err)
+			} else if err == nil {
+				fmt.Fprintf(os.Stderr, "==> Deregistered %q from proxy (traffic now 404s)\n", pf.Name)
+			}
+		}
+	}
+
 	script := generateDestroyScript(ctx.AppName)
 	exitCode, err := internalssh.RunScript(ctx.Client, script, nil, os.Stdout, os.Stderr)
 	if err != nil {
@@ -125,27 +163,6 @@ func resetDestroy(cmd *cobra.Command, ctx *appContext, mode Mode, legacyProxy bo
 	}
 	if exitCode != 0 {
 		return fmt.Errorf("destroy script exited with code %d", exitCode)
-	}
-
-	if mode != ModeProxy && !legacyProxy {
-		return nil
-	}
-
-	dataDir, _ := cmd.Flags().GetString("data-dir")
-	if dataDir == "" {
-		dataDir = proxy.DefaultDataDir
-	}
-	admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: ctx.Client}, proxy.SocketPath(dataDir))
-	pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
-	if pfErr != nil || pf.Validate() != nil {
-		// Without conoha.yml we can't name the service. Log + continue —
-		// the fresh init in Phase 2 will fail anyway if conoha.yml is missing.
-		return nil
-	}
-	if err := admin.Delete(pf.Name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
-		fmt.Fprintf(os.Stderr, "warning: proxy delete %s: %v\n", pf.Name, err)
-	} else if err == nil {
-		fmt.Fprintf(os.Stderr, "==> Deregistered %q from proxy\n", pf.Name)
 	}
 	return nil
 }

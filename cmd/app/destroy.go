@@ -36,20 +36,10 @@ var destroyCmd = &cobra.Command{
 		// Resolve mode BEFORE the prompt so a flag/marker conflict aborts
 		// before the user commits, and BEFORE the destroy script runs
 		// because the script removes the .conoha-mode marker as part of rm -rf.
-		mode, modeErr := ResolveModeFromCtx(cmd, ctx)
+		// Legacy-fallback mirrors reset; shared helper avoids duplicated logic.
+		mode, legacyProxy, modeErr := ResolveAppModeWithLegacyFallback(cmd, ctx)
 		if modeErr != nil && !errors.Is(modeErr, ErrNoMarker) {
 			return modeErr
-		}
-
-		// Marker absent: treat as legacy proxy deployment when conoha.yml
-		// validates locally. Old proxy apps from before this PR have no
-		// marker; skipping proxy DELETE would leak registrations (review I2).
-		legacyProxy := false
-		if errors.Is(modeErr, ErrNoMarker) {
-			if pf, pfErr := config.LoadProjectFile(config.ProjectFileName); pfErr == nil && pf.Validate() == nil {
-				legacyProxy = true
-				fmt.Fprintf(os.Stderr, "==> No mode marker on server; treating as legacy proxy deployment\n")
-			}
 		}
 
 		yes, _ := cmd.Flags().GetBool("yes")
