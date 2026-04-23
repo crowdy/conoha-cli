@@ -1,0 +1,14 @@
+name: e2e-app
+hosts:
+  - e2e.local
+web:
+  service: web
+  port: 80
+health:
+  # Proxy defaults to /up; stock nginx:1.27-alpine 404s on that path.
+  # Probing / gives a 200 OK on the default welcome page.
+  path: /
+deploy:
+  # Tight drain window keeps the harness under budget (spec §4.3). The
+  # default 30s would double this Phase's runtime without adding signal.
+  drain_ms: 2000

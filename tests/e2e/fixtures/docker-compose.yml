@@ -1,0 +1,9 @@
+services:
+  web:
+    image: nginx:1.27-alpine
+    # No ports here — conoha's compose override injects
+    # "127.0.0.1:0:80" at deploy time so the kernel picks the host port
+    # for blue/green discovery. Publishing in both files would make
+    # docker-compose merge two mappings onto container:80 and fail to
+    # bind the second one (DinD surfaces it as EADDRINUSE on the chosen
+    # random port).
