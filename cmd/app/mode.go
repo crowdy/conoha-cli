@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/crowdy/conoha-cli/internal/config"
 	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
 )
@@ -239,4 +240,33 @@ func AddModeFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("proxy", false, "force proxy (blue/green) mode, overriding server marker")
 	cmd.Flags().Bool("no-proxy", false, "force no-proxy (flat single-slot) mode, overriding server marker")
 	cmd.MarkFlagsMutuallyExclusive("proxy", "no-proxy")
+}
+
+// ResolveAppModeWithLegacyFallback is the mode resolver used by destructive
+// subcommands (destroy, reset) that must not leak proxy registrations when
+// operating on pre-marker ("legacy") apps. It first asks ResolveModeFromCtx,
+// then — only if ErrNoMarker — probes for a local conoha.yml: if one
+// validates, the caller is treated as a legacy proxy deployment
+// (legacyProxy=true).
+//
+// Return triple:
+//   - mode: resolved Mode (ModeProxy synthesized on the legacy fallback path)
+//   - legacyProxy: true when the marker was absent but conoha.yml was present
+//   - err: any non-ErrNoMarker mode error; ErrNoMarker itself is returned
+//     when the marker is absent AND conoha.yml is also absent/invalid, so
+//     callers can tell that case apart from "marker present, other error".
+func ResolveAppModeWithLegacyFallback(cmd *cobra.Command, ctx *appContext) (Mode, bool, error) {
+	mode, err := ResolveModeFromCtx(cmd, ctx)
+	if err == nil {
+		return mode, false, nil
+	}
+	if !errors.Is(err, ErrNoMarker) {
+		return "", false, err
+	}
+	pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
+	if pfErr != nil || pf.Validate() != nil {
+		return "", false, ErrNoMarker
+	}
+	fmt.Fprintln(os.Stderr, "==> No mode marker on server; treating as legacy proxy deployment")
+	return ModeProxy, true, nil
 }
