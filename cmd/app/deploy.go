@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -181,14 +182,62 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 
 	dataDir, _ := cmd.Flags().GetString("data-dir")
 	admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: sshClient}, proxy.SocketPath(dataDir))
-
-	// Service must exist — init registers it. Missing = user skipped init.
-	if _, err := admin.Get(pf.Name); err != nil {
-		return fmt.Errorf("%w: %v", notInitializedError(pf.Name, serverID, ModeProxy), err)
-	}
+	ops := newSSHDeployOps(sshClient, admin)
 
 	slotOverride, _ := cmd.Flags().GetString("slot")
-	slot := slotOverride
+
+	return runProxyDeployState(proxyDeployParams{
+		ProjectFile:  pf,
+		ComposeFile:  composeFile,
+		ServerID:     serverID,
+		ServerName:   s.Name,
+		ServerIP:     ip,
+		SlotOverride: slotOverride,
+		Archive:      makeArchiveOfCwd,
+	}, ops)
+}
+
+// proxyDeployParams is the input to the runProxyDeployState state machine.
+// Pulled into a struct so tests can populate it without mocking the local
+// filesystem / cobra.Command machinery.
+type proxyDeployParams struct {
+	ProjectFile  *config.ProjectFile
+	ComposeFile  string
+	ServerID     string
+	ServerName   string
+	ServerIP     string
+	SlotOverride string
+	// Archive builds the tar.gz of the deploy payload on demand. The
+	// production code tarballs the cwd; tests pass a pre-made buffer.
+	Archive func() (io.Reader, error)
+}
+
+// makeArchiveOfCwd is the production Archive func: load .dockerignore
+// patterns and tar.gz the current directory.
+func makeArchiveOfCwd() (io.Reader, error) {
+	patterns, err := loadIgnorePatterns(".")
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := createTarGz(".", patterns, &buf); err != nil {
+		return nil, fmt.Errorf("create archive: %w", err)
+	}
+	return &buf, nil
+}
+
+// runProxyDeployState drives the blue/green deploy state machine without
+// any direct SSH or filesystem dependencies. Every side effect flows
+// through ops, which tests substitute with a recording fake.
+func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
+	pf := p.ProjectFile
+
+	// Service must exist — init registers it. Missing = user skipped init.
+	if _, err := ops.Proxy().Get(pf.Name); err != nil {
+		return fmt.Errorf("%w: %v", notInitializedError(pf.Name, p.ServerID, ModeProxy), err)
+	}
+
+	slot := p.SlotOverride
 	if slot == "" {
 		base, err := determineSlotID(".", IsGitRepo("."))
 		if err != nil {
@@ -196,7 +245,7 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 		}
 		slot = suffixIfTaken(base, func(candidate string) bool {
 			probe := buildComposeProjectExists(slotProjectName(pf.Name, candidate))
-			code, _ := internalssh.RunCommand(sshClient, probe, os.Stderr, os.Stderr)
+			code, _, _ := ops.Run(probe, nil)
 			return code == 0
 		})
 	}
@@ -204,20 +253,16 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "==> Deploying %q to %s (%s)\n", pf.Name, s.Name, ip)
+	fmt.Fprintf(os.Stderr, "==> Deploying %q to %s (%s)\n", pf.Name, p.ServerName, p.ServerIP)
 	fmt.Fprintf(os.Stderr, "==> Slot: %s (compose project: %s)\n", slot, slotProjectName(pf.Name, slot))
 
 	// Upload archive to slot work dir.
-	patterns, err := loadIgnorePatterns(".")
+	archive, err := p.Archive()
 	if err != nil {
 		return err
 	}
-	var buf bytes.Buffer
-	if err := createTarGz(".", patterns, &buf); err != nil {
-		return fmt.Errorf("create archive: %w", err)
-	}
 	slotWork := fmt.Sprintf("/opt/conoha/%s/%s", pf.Name, slot)
-	if err := runRemote(sshClient, buildSlotUploadCmd(slotWork, ""), &buf); err != nil {
+	if err := runRemoteOps(ops, buildSlotUploadCmd(slotWork, ""), archive); err != nil {
 		return fmt.Errorf("upload: %w", err)
 	}
 
@@ -225,17 +270,17 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 	overrideContent := composeOverride(pf.Name, slot, pf.Web.Service, pf.Web.Port, len(pf.Accessories) > 0)
 	overridePath := "conoha-override.yml"
 	writeOverride := fmt.Sprintf("cat > '%s/%s' <<'EOF'\n%sEOF", slotWork, overridePath, overrideContent)
-	if err := runRemote(sshClient, writeOverride, nil); err != nil {
+	if err := runRemoteOps(ops, writeOverride, nil); err != nil {
 		return fmt.Errorf("write override: %w", err)
 	}
 
 	// First-run: bring up accessories (idempotent via existence probe).
 	if len(pf.Accessories) > 0 {
 		check := buildAccessoryExists(accessoryProjectName(pf.Name))
-		code, _ := internalssh.RunCommand(sshClient, check, os.Stderr, os.Stderr)
+		code, _, _ := ops.Run(check, nil)
 		if code != 0 {
 			fmt.Fprintf(os.Stderr, "==> Starting accessories: %v\n", pf.Accessories)
-			if err := runRemote(sshClient, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), composeFile, pf.Accessories), nil); err != nil {
+			if err := runRemoteOps(ops, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), p.ComposeFile, pf.Accessories), nil); err != nil {
 				return fmt.Errorf("accessory up: %w", err)
 			}
 		}
@@ -243,20 +288,20 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 
 	// Start the new slot's web service.
 	fmt.Fprintf(os.Stderr, "==> Building and starting %s in new slot\n", pf.Web.Service)
-	if err := runRemote(sshClient, buildSlotComposeUp(slotWork, slotProjectName(pf.Name, slot), composeFile, overridePath, pf.Web.Service), nil); err != nil {
+	if err := runRemoteOps(ops, buildSlotComposeUp(slotWork, slotProjectName(pf.Name, slot), p.ComposeFile, overridePath, pf.Web.Service), nil); err != nil {
 		return fmt.Errorf("compose up (slot): %w", err)
 	}
 
 	// Discover kernel-picked host port.
 	containerName := fmt.Sprintf("%s-%s-%s", pf.Name, slot, pf.Web.Service)
-	var portOut bytes.Buffer
-	if _, err := internalssh.RunCommand(sshClient, buildDockerPortCmd(containerName, pf.Web.Port), &portOut, os.Stderr); err != nil {
-		tearDownSlot(sshClient, pf.Name, slot)
-		return fmt.Errorf("docker port: %w", err)
+	_, portOut, portErr := ops.Run(buildDockerPortCmd(containerName, pf.Web.Port), nil)
+	if portErr != nil {
+		tearDownSlotOps(ops, pf.Name, slot)
+		return fmt.Errorf("docker port: %w", portErr)
 	}
-	hostPort, err := extractHostPort(portOut.String())
+	hostPort, err := extractHostPort(string(portOut))
 	if err != nil {
-		tearDownSlot(sshClient, pf.Name, slot)
+		tearDownSlotOps(ops, pf.Name, slot)
 		return err
 	}
 	targetURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
@@ -268,17 +313,16 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 	}
 
 	// Call proxy /deploy. On 424 the proxy did not mutate state — tear down new slot.
-	updated, err := admin.Deploy(pf.Name, proxypkg.DeployRequest{TargetURL: targetURL, DrainMs: drainMs})
+	updated, err := ops.Proxy().Deploy(pf.Name, proxypkg.DeployRequest{TargetURL: targetURL, DrainMs: drainMs})
 	if err != nil {
-		tearDownSlot(sshClient, pf.Name, slot)
+		tearDownSlotOps(ops, pf.Name, slot)
 		return err
 	}
 
 	// Read old slot pointer (empty on first deploy), then update to current.
 	ptrPath := fmt.Sprintf("/opt/conoha/%s/CURRENT_SLOT", pf.Name)
-	var ptrBuf bytes.Buffer
-	_, _ = internalssh.RunCommand(sshClient, fmt.Sprintf("cat '%s' 2>/dev/null || true", ptrPath), &ptrBuf, os.Stderr)
-	oldSlot := strings.TrimSpace(ptrBuf.String())
+	_, ptrBytes, _ := ops.Run(fmt.Sprintf("cat '%s' 2>/dev/null || true", ptrPath), nil)
+	oldSlot := strings.TrimSpace(string(ptrBytes))
 	if oldSlot != "" {
 		if err := ValidateSlotID(oldSlot); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: CURRENT_SLOT contained %q, ignoring: %v\n", oldSlot, err)
@@ -286,14 +330,14 @@ func runProxyDeploy(cmd *cobra.Command, serverID string) error {
 		}
 	}
 
-	if err := runRemote(sshClient, fmt.Sprintf("printf %%s '%s' > '%s'", slot, ptrPath), nil); err != nil {
+	if err := runRemoteOps(ops, fmt.Sprintf("printf %%s '%s' > '%s'", slot, ptrPath), nil); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: update CURRENT_SLOT pointer (MANUAL: write %q to %s): %v\n", slot, ptrPath, err)
 	}
 
 	if oldSlot != "" && oldSlot != slot {
 		oldWork := fmt.Sprintf("/opt/conoha/%s/%s", pf.Name, oldSlot)
 		schedule := buildScheduleDrainCmd(oldWork, slotProjectName(pf.Name, oldSlot), pf.Name, oldSlot, drainMs)
-		if err := runRemote(sshClient, schedule, nil); err != nil {
+		if err := runRemoteOps(ops, schedule, nil); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: schedule drain teardown: %v\n", err)
 		} else {
 			fmt.Fprintf(os.Stderr, "==> Scheduled teardown of old slot %q in %dms\n", oldSlot, drainMs)
@@ -325,14 +369,4 @@ func runRemote(cli *ssh.Client, command string, stdinData *bytes.Buffer) error {
 		return fmt.Errorf("remote exit %d", code)
 	}
 	return nil
-}
-
-// tearDownSlot brings down a slot's compose project and removes its work dir.
-// Best-effort; the caller already has a more interesting error to return.
-func tearDownSlot(cli *ssh.Client, app, slot string) {
-	work := fmt.Sprintf("/opt/conoha/%s/%s", app, slot)
-	cmd := fmt.Sprintf(
-		"docker compose -p %s -f '%s/conoha-override.yml' down 2>/dev/null || true; rm -rf '%s' || true",
-		slotProjectName(app, slot), work, work)
-	_, _ = internalssh.RunCommand(cli, cmd, os.Stderr, os.Stderr)
 }
