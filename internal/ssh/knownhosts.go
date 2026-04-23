@@ -112,11 +112,9 @@ func promptAndPin(path, hostname string, remote net.Addr, key ssh.PublicKey) err
 	// Also include the numeric address so that later SSH sessions by IP
 	// (common in this CLI — we connect to IPs, not names) also match.
 	addrs := []string{addr}
-	if remote != nil {
-		if _, ok := remote.(*net.TCPAddr); ok {
-			if na := knownhosts.Normalize(remote.String()); na != addr {
-				addrs = append(addrs, na)
-			}
+	if _, ok := remote.(*net.TCPAddr); ok {
+		if na := knownhosts.Normalize(remote.String()); na != addr {
+			addrs = append(addrs, na)
 		}
 	}
 	line = knownhosts.Line(addrs, key)
