@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"golang.org/x/term"
 )
 
 func TestHostKeyCallback_Insecure(t *testing.T) {
@@ -78,6 +79,32 @@ func TestHostKeyCallback_UnknownHost_NoInput(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not in") || !strings.Contains(err.Error(), "--insecure") {
 		t.Errorf("expected helpful no-input error message, got: %v", err)
+	}
+}
+
+func TestHostKeyCallback_UnknownHost_NonTTYFailsClosed(t *testing.T) {
+	// Under `go test`, stdin is typically a pipe; if a developer runs the
+	// suite from a real terminal we skip rather than block on a prompt.
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		t.Skip("stdin is a TTY; non-TTY guard cannot be exercised here")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "known_hosts")
+	t.Setenv("SSH_KNOWN_HOSTS", path)
+
+	cb, err := HostKeyCallback(false, false /* noInput=false on purpose */)
+	if err != nil {
+		t.Fatalf("HostKeyCallback: %v", err)
+	}
+
+	key := genKey(t)
+	err = cb("new-host:22", fakeTCPAddr(t, "1.2.3.4:22"), key)
+	if err == nil {
+		t.Fatal("expected refusal when stdin is non-TTY, got nil")
+	}
+	if !strings.Contains(err.Error(), "non-TTY") {
+		t.Errorf("expected error to mention non-TTY, got: %v", err)
 	}
 }
 

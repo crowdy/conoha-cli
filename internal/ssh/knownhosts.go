@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"golang.org/x/term"
 )
 
 // HostKeyCallback returns an ssh.HostKeyCallback that verifies the remote
@@ -57,9 +58,12 @@ func HostKeyCallback(insecure, noInput bool) (ssh.HostKeyCallback, error) {
 				// Key mismatch — never auto-accept; this is a MITM signal.
 				return &HostKeyMismatchError{Host: hostname, Path: path, Err: kkErr}
 			}
-			// Unknown host: TOFU prompt (or fail in no-input mode).
-			if noInput {
-				return fmt.Errorf("host %s not in %s and --no-input/CONOHA_NO_INPUT is set — refusing to trust unknown host. Add manually with ssh-keyscan or use --insecure", hostname, path)
+			// Unknown host: TOFU prompt — only when stdin is genuinely
+			// interactive. A non-TTY stdin (CI, build script piping a
+			// heredoc, wrapper without --no-input) would otherwise let
+			// `yes\n` from an untrusted source silently trust the host.
+			if noInput || !term.IsTerminal(int(os.Stdin.Fd())) {
+				return fmt.Errorf("host %s not in %s and stdin is not interactive (no-input mode or non-TTY) — refusing to trust unknown host. Add manually with ssh-keyscan or use --insecure", hostname, path)
 			}
 			return promptAndPin(path, hostname, remote, key)
 		} else {

@@ -10,21 +10,17 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/crowdy/conoha-cli/internal/config"
+	configpkg "github.com/crowdy/conoha-cli/internal/config"
 )
 
-// ConnectConfig holds SSH connection parameters.
+// ConnectConfig holds SSH connection parameters. Host-key verification is
+// controlled globally via the --insecure flag / CONOHA_SSH_INSECURE env var
+// (see configpkg.IsSSHInsecure); there is no per-call opt-out by design.
 type ConnectConfig struct {
 	Host    string // IP or hostname
 	Port    string // default "22"
 	User    string // default "root"
 	KeyPath string // path to private key file
-
-	// Insecure disables host-key verification. When false (the default),
-	// the connection uses ~/.ssh/known_hosts with TOFU on first connect.
-	// Callers typically leave this false and let the global --insecure flag
-	// flip config.IsSSHInsecure() instead.
-	Insecure bool
 }
 
 // Connect establishes an SSH connection.
@@ -46,8 +42,7 @@ func Connect(cfg ConnectConfig) (*ssh.Client, error) {
 		return nil, fmt.Errorf("parse key %s: %w", cfg.KeyPath, err)
 	}
 
-	insecure := cfg.Insecure || config.IsSSHInsecure()
-	hostKeyCB, err := HostKeyCallback(insecure, config.IsNoInput())
+	hostKeyCB, err := HostKeyCallback(configpkg.IsSSHInsecure(), configpkg.IsNoInput())
 	if err != nil {
 		return nil, err
 	}
