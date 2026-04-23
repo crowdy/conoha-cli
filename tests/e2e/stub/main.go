@@ -21,17 +21,17 @@ type address struct {
 }
 
 type server struct {
-	ID        string                 `json:"id"`
-	Name      string                 `json:"name"`
-	Status    string                 `json:"status"`
-	Flavor    map[string]string      `json:"flavor"`
-	ImageID   string                 `json:"image_id"`
-	TenantID  string                 `json:"tenant_id"`
-	KeyName   string                 `json:"key_name"`
-	Created   string                 `json:"created"`
-	Updated   string                 `json:"updated"`
-	Addresses map[string][]address   `json:"addresses"`
-	Metadata  map[string]string      `json:"metadata"`
+	ID        string               `json:"id"`
+	Name      string               `json:"name"`
+	Status    string               `json:"status"`
+	Flavor    map[string]string    `json:"flavor"`
+	ImageID   string               `json:"image_id"`
+	TenantID  string               `json:"tenant_id"`
+	KeyName   string               `json:"key_name"`
+	Created   string               `json:"created"`
+	Updated   string               `json:"updated"`
+	Addresses map[string][]address `json:"addresses"`
+	Metadata  map[string]string    `json:"metadata"`
 }
 
 func main() {
@@ -69,7 +69,7 @@ func main() {
 		http.Error(w, `{"error":{"message":"server not found"}}`, http.StatusNotFound)
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprintln(w, "ok")
+		_, _ = fmt.Fprintln(w, "ok")
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("stub: unhandled %s %s", r.Method, r.URL.Path)

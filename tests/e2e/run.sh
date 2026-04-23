@@ -35,6 +35,9 @@ cleanup() {
   fi
   docker rm -f "$TARGET_NAME" >/dev/null 2>&1 || true
   docker volume rm "${TARGET_NAME}-docker-data" >/dev/null 2>&1 || true
+  if [ -z "${E2E_KEEP_IMAGE:-}" ]; then
+    docker rmi "$IMAGE_TAG" >/dev/null 2>&1 || true
+  fi
   rm -rf "$WORKDIR"
   return $rc
 }
@@ -51,7 +54,9 @@ log "Generate throwaway SSH key"
 ssh-keygen -t ed25519 -N '' -f "$WORKDIR/id_ed25519" -C e2e@localhost >/dev/null
 
 log "Build target image ($IMAGE_TAG)"
-docker build --quiet -t "$IMAGE_TAG" -f tests/e2e/Dockerfile.target tests/e2e
+# --progress=plain keeps build output visible so a CI failure shows the
+# offending RUN step rather than a silent `--quiet` dump.
+docker build --progress=plain -t "$IMAGE_TAG" -f tests/e2e/Dockerfile.target tests/e2e
 
 log "Start target container"
 docker rm -f "$TARGET_NAME" >/dev/null 2>&1 || true
