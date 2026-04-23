@@ -9,9 +9,13 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	configpkg "github.com/crowdy/conoha-cli/internal/config"
 )
 
-// ConnectConfig holds SSH connection parameters.
+// ConnectConfig holds SSH connection parameters. Host-key verification is
+// controlled globally via the --insecure flag / CONOHA_SSH_INSECURE env var
+// (see configpkg.IsSSHInsecure); there is no per-call opt-out by design.
 type ConnectConfig struct {
 	Host    string // IP or hostname
 	Port    string // default "22"
@@ -38,15 +42,20 @@ func Connect(cfg ConnectConfig) (*ssh.Client, error) {
 		return nil, fmt.Errorf("parse key %s: %w", cfg.KeyPath, err)
 	}
 
-	config := &ssh.ClientConfig{
+	hostKeyCB, err := HostKeyCallback(configpkg.IsSSHInsecure(), configpkg.IsNoInput())
+	if err != nil {
+		return nil, err
+	}
+
+	clientCfg := &ssh.ClientConfig{
 		User:            cfg.User,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // personal VPS use
+		HostKeyCallback: hostKeyCB,
 		Timeout:         30 * time.Second,
 	}
 
 	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
-	return ssh.Dial("tcp", addr, config)
+	return ssh.Dial("tcp", addr, clientCfg)
 }
 
 // RunScript uploads and executes a script on the remote server.
