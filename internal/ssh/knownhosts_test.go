@@ -13,6 +13,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
+
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 func TestHostKeyCallback_Insecure(t *testing.T) {
@@ -79,6 +81,15 @@ func TestHostKeyCallback_UnknownHost_NoInput(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not in") || !strings.Contains(err.Error(), "--insecure") {
 		t.Errorf("expected helpful no-input error message, got: %v", err)
+	}
+	// Must surface as ValidationError so CI can distinguish this from other
+	// SSH failures by exit code (ExitValidation = 4).
+	var ve *cerrors.ValidationError
+	if !errors.As(err, &ve) {
+		t.Errorf("expected *ValidationError, got %T", err)
+	}
+	if cerrors.GetExitCode(err) != cerrors.ExitValidation {
+		t.Errorf("expected ExitValidation (%d), got %d", cerrors.ExitValidation, cerrors.GetExitCode(err))
 	}
 }
 

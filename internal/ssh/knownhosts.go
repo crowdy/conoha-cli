@@ -11,6 +11,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
+
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 // HostKeyCallback returns an ssh.HostKeyCallback that verifies the remote
@@ -63,7 +65,9 @@ func HostKeyCallback(insecure, noInput bool) (ssh.HostKeyCallback, error) {
 			// heredoc, wrapper without --no-input) would otherwise let
 			// `yes\n` from an untrusted source silently trust the host.
 			if noInput || !term.IsTerminal(int(os.Stdin.Fd())) {
-				return fmt.Errorf("host %s not in %s and stdin is not interactive (no-input mode or non-TTY) — refusing to trust unknown host. Add manually with ssh-keyscan or use --insecure", hostname, path)
+				return &cerrors.ValidationError{Message: fmt.Sprintf(
+					"host %s not in %s and stdin is not interactive (no-input mode or non-TTY) — refusing to trust unknown host. Add manually with ssh-keyscan or use --insecure",
+					hostname, path)}
 			}
 			return promptAndPin(path, hostname, remote, key)
 		} else {
