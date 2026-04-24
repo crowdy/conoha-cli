@@ -399,8 +399,12 @@ if "$CONOHA" app env set "${SSH_FLAGS[@]}" --app-name e2e-app e2e-target \
   cat "$set_err" >&2
   exit 1
 fi
-if ! grep -q 'legacy env file' "$set_err"; then
-  echo "env set stderr missing guard message 'legacy env file':" >&2
+# Assert on a guard-unique marker. The shorter "legacy env file" substring
+# also appears in the `env list` read-time warning, so matching on it would
+# spuriously pass if the guard regressed to a plain warning. The "Writing
+# here would silently hide" line is only emitted by the data-loss guard.
+if ! grep -q 'Writing here would silently hide' "$set_err"; then
+  echo "env set stderr missing guard marker 'Writing here would silently hide':" >&2
   cat "$set_err" >&2
   exit 1
 fi
