@@ -71,11 +71,7 @@ var destroyCmd = &cobra.Command{
 			admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: ctx.Client}, proxy.SocketPath(dataDir))
 			pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
 			if pfErr == nil && pf.Validate() == nil {
-				if err := admin.Delete(pf.Name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
-					fmt.Fprintf(os.Stderr, "warning: proxy delete %s: %v\n", pf.Name, err)
-				} else if err == nil {
-					fmt.Fprintf(os.Stderr, "==> Deregistered %q from proxy\n", pf.Name)
-				}
+				deregisterProxyServices(admin, pf, os.Stderr)
 			}
 		}
 
