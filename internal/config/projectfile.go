@@ -13,14 +13,14 @@ const ProjectFileName = "conoha.yml"
 
 // ProjectFile is the parsed conoha.yml declaration that lives at the repo root.
 type ProjectFile struct {
-	Name        string         `yaml:"name"`
-	Hosts       []string       `yaml:"hosts"`
-	Web         WebSpec        `yaml:"web"`
-	ComposeFile string         `yaml:"compose_file,omitempty"`
-	Accessories []string       `yaml:"accessories,omitempty"`
-	Health      *HealthSpec    `yaml:"health,omitempty"`
-	Deploy      *DeploySpec    `yaml:"deploy,omitempty"`
-	Expose      []ExposeBlock  `yaml:"expose,omitempty"`
+	Name        string        `yaml:"name"`
+	Hosts       []string      `yaml:"hosts"`
+	Web         WebSpec       `yaml:"web"`
+	ComposeFile string        `yaml:"compose_file,omitempty"`
+	Accessories []string      `yaml:"accessories,omitempty"`
+	Health      *HealthSpec   `yaml:"health,omitempty"`
+	Deploy      *DeploySpec   `yaml:"deploy,omitempty"`
+	Expose      []ExposeBlock `yaml:"expose,omitempty"`
 }
 
 // WebSpec declares which compose service is the blue/green target.
