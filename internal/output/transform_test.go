@@ -183,6 +183,21 @@ func TestFilterRows(t *testing.T) {
 		}
 	})
 
+	t.Run("unicode contains", func(t *testing.T) {
+		u := []filterTestItem{
+			{Name: "東京サーバー", Status: "ACTIVE", Count: 1},
+			{Name: "osaka-server", Status: "ACTIVE", Count: 2},
+		}
+		result, err := FilterRows(u, []string{"name~東京"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 1 || rows[0].Name != "東京サーバー" {
+			t.Errorf("expected Tokyo row, got %+v", rows)
+		}
+	})
+
 	t.Run("numeric regex vs contains semantics", func(t *testing.T) {
 		// Documenting the difference: contains "3" also matches 13/30/300;
 		// regex "^3$" anchors to exactly 3.

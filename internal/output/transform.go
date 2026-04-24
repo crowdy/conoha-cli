@@ -10,6 +10,8 @@ import (
 
 type filterOp int
 
+// opEq must stay at position 0 so that the zero value of filterOp means
+// "exact match" — the matcher's default branch relies on this.
 const (
 	opEq filterOp = iota
 	opContains
@@ -17,7 +19,8 @@ const (
 )
 
 // FilterRows filters a slice of structs by the given filters. Supported
-// operators (checked in order):
+// operators, recognised longest-first (so `~=` wins over `~`, and `~`
+// over `=`):
 //
 //	key~=regex  — field matches regex (case-insensitive)
 //	key~value   — field contains value (case-insensitive substring)
