@@ -51,7 +51,7 @@ func registerProxyServices(admin proxyAdmin, pf *config.ProjectFile, log io.Writ
 		return err
 	}
 	registered = append(registered, pf.Name)
-	fmt.Fprintf(log, "Service %q registered. phase=%s tls=%s\n", rootSvc.Name, rootSvc.Phase, rootSvc.TLSStatus)
+	_, _ = fmt.Fprintf(log, "Service %q registered. phase=%s tls=%s\n", rootSvc.Name, rootSvc.Phase, rootSvc.TLSStatus)
 
 	for i := range pf.Expose {
 		b := &pf.Expose[i]
@@ -64,13 +64,13 @@ func registerProxyServices(admin proxyAdmin, pf *config.ProjectFile, log io.Writ
 		if upErr != nil {
 			for j := len(registered) - 1; j >= 0; j-- {
 				if delErr := admin.Delete(registered[j]); delErr != nil && !errors.Is(delErr, proxypkg.ErrNotFound) {
-					fmt.Fprintf(log, "warning: rollback delete %s: %v\n", registered[j], delErr)
+					_, _ = fmt.Fprintf(log, "warning: rollback delete %s: %v\n", registered[j], delErr)
 				}
 			}
 			return fmt.Errorf("upsert expose %q (%s): %w", b.Label, b.Host, upErr)
 		}
 		registered = append(registered, name)
-		fmt.Fprintf(log, "==> Registered %q on %s (phase=%s tls=%s)\n", svc.Name, b.Host, svc.Phase, svc.TLSStatus)
+		_, _ = fmt.Fprintf(log, "==> Registered %q on %s (phase=%s tls=%s)\n", svc.Name, b.Host, svc.Phase, svc.TLSStatus)
 	}
 	return nil
 }
@@ -84,14 +84,14 @@ func deregisterProxyServices(admin proxyAdmin, pf *config.ProjectFile, log io.Wr
 	for i := len(pf.Expose) - 1; i >= 0; i-- {
 		name := exposeServiceName(pf.Name, pf.Expose[i].Label)
 		if err := admin.Delete(name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
-			fmt.Fprintf(log, "warning: proxy delete %s: %v\n", name, err)
+			_, _ = fmt.Fprintf(log, "warning: proxy delete %s: %v\n", name, err)
 		} else if err == nil {
-			fmt.Fprintf(log, "==> Deregistered %q from proxy\n", name)
+			_, _ = fmt.Fprintf(log, "==> Deregistered %q from proxy\n", name)
 		}
 	}
 	if err := admin.Delete(pf.Name); err != nil && !errors.Is(err, proxypkg.ErrNotFound) {
-		fmt.Fprintf(log, "warning: proxy delete %s: %v\n", pf.Name, err)
+		_, _ = fmt.Fprintf(log, "warning: proxy delete %s: %v\n", pf.Name, err)
 	} else if err == nil {
-		fmt.Fprintf(log, "==> Deregistered %q from proxy\n", pf.Name)
+		_, _ = fmt.Fprintf(log, "==> Deregistered %q from proxy\n", pf.Name)
 	}
 }
