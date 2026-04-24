@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	stderrors "errors"
 	"os"
 	"strings"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/crowdy/conoha-cli/internal/config"
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 func TestSelect_NoInput_WithoutHint_IncludesLabel(t *testing.T) {
@@ -49,5 +51,34 @@ func TestSelect_NonTTY_IncludesLabel(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "pick") {
 		t.Errorf("error should include label, got: %q", err.Error())
+	}
+}
+
+func TestSelect_NoInput_ReturnsValidationError(t *testing.T) {
+	// The TTY-absence failure must surface as ValidationError so the CLI
+	// exits with ExitValidation (4) rather than the generic code. CI scripts
+	// rely on the distinct code to tell "missing required flag" apart from
+	// other runtime failures.
+	t.Setenv(config.EnvNoInput, "1")
+	items := []SelectItem{{Label: "opt", Value: "v"}}
+
+	_, err := Select("Select flavor", items)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var ve *cerrors.ValidationError
+	if !stderrors.As(err, &ve) {
+		t.Fatalf("expected *ValidationError, got %T: %v", err, err)
+	}
+	if cerrors.GetExitCode(err) != cerrors.ExitValidation {
+		t.Errorf("expected ExitValidation (%d), got %d", cerrors.ExitValidation, cerrors.GetExitCode(err))
+	}
+
+	_, err = Select("Select sg", items, "use --security-group")
+	if err == nil {
+		t.Fatal("expected error with hint")
+	}
+	if !stderrors.As(err, &ve) {
+		t.Fatalf("hinted path: expected *ValidationError, got %T: %v", err, err)
 	}
 }

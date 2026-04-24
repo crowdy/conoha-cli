@@ -9,6 +9,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/crowdy/conoha-cli/internal/config"
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 // SelectItem represents a selectable item.
@@ -24,9 +25,9 @@ type SelectItem struct {
 func Select(label string, items []SelectItem, hint ...string) (string, error) {
 	if config.IsNoInput() || !term.IsTerminal(int(os.Stdin.Fd())) {
 		if len(hint) > 0 && hint[0] != "" {
-			return "", fmt.Errorf("%s; interactive selection requires a TTY", hint[0])
+			return "", &cerrors.ValidationError{Message: fmt.Sprintf("%s; interactive selection requires a TTY", hint[0])}
 		}
-		return "", fmt.Errorf("interactive selection requires a TTY for %q; use flags to specify values", label)
+		return "", &cerrors.ValidationError{Message: fmt.Sprintf("interactive selection requires a TTY for %q; use flags to specify values", label)}
 	}
 
 	searcher := func(input string, index int) bool {
