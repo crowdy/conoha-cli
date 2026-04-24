@@ -2,6 +2,7 @@ package output
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -137,6 +138,73 @@ func TestFilterRows(t *testing.T) {
 			if _, err := FilterRows(data, []string{f}); err == nil {
 				t.Errorf("expected error for empty key filter %q", f)
 			}
+		}
+	})
+
+	t.Run("empty value rejected for ~ and ~=", func(t *testing.T) {
+		// Empty value for contains/regex would silently match every row —
+		// almost certainly a typo, so reject.
+		for _, f := range []string{"name~", "name~="} {
+			if _, err := FilterRows(data, []string{f}); err == nil {
+				t.Errorf("expected error for %q (empty value)", f)
+			}
+		}
+	})
+
+	t.Run("empty value allowed for = (match empty field)", func(t *testing.T) {
+		// Preserve historical behaviour: `key=` matches rows whose field
+		// stringifies to the empty string.
+		withEmpty := []filterTestItem{
+			{Name: "a", Status: "ACTIVE", Count: 1},
+			{Name: "", Status: "STOPPED", Count: 2},
+		}
+		result, err := FilterRows(withEmpty, []string{"name="})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 1 || rows[0].Status != "STOPPED" {
+			t.Errorf("expected the row with empty Name, got %+v", rows)
+		}
+	})
+
+	t.Run("ambiguous value hint", func(t *testing.T) {
+		// `name=a~b` parses as (field="name=a", contains "b") because ~ is
+		// checked before =. The resulting field-lookup failure should hint
+		// at the operator-splitting behaviour rather than a plain "unknown
+		// field" message.
+		_, err := FilterRows(data, []string{"name=a~b"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "=") || !strings.Contains(msg, "first operator") {
+			t.Errorf("expected ambiguity hint in error, got: %q", msg)
+		}
+	})
+
+	t.Run("numeric regex vs contains semantics", func(t *testing.T) {
+		// Documenting the difference: contains "3" also matches 13/30/300;
+		// regex "^3$" anchors to exactly 3.
+		nums := []filterTestItem{
+			{Name: "a", Count: 3},
+			{Name: "b", Count: 13},
+			{Name: "c", Count: 30},
+		}
+		contains, err := FilterRows(nums, []string{"count~3"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(contains.([]filterTestItem)) != 3 {
+			t.Errorf("contains '3' should match 3/13/30, got %+v", contains)
+		}
+		regex, err := FilterRows(nums, []string{"count~=^3$"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := regex.([]filterTestItem)
+		if len(got) != 1 || got[0].Count != 3 {
+			t.Errorf("regex '^3$' should match only 3, got %+v", got)
 		}
 	})
 

@@ -87,6 +87,15 @@ func FilterRows(data any, filters []string) (any, error) {
 	// Validate filter fields
 	for _, fp := range parsed {
 		if _, ok := fieldIndex[fp.field]; !ok {
+			// If the parsed field name itself contains an operator char,
+			// the user probably embedded '=' or '~' in a value; splitFilter
+			// split on the earliest operator and mis-assigned the rest to
+			// the key. Surface that hint rather than a generic "unknown
+			// field" message.
+			if strings.ContainsAny(fp.field, "=~") {
+				return nil, fmt.Errorf("unknown field %q; values containing '=' or '~' are not supported (splits on the first operator); available fields: %s",
+					fp.field, strings.Join(fieldNames, ", "))
+			}
 			return nil, fmt.Errorf("unknown field %q; available fields: %s", fp.field, strings.Join(fieldNames, ", "))
 		}
 	}
@@ -130,11 +139,17 @@ func splitFilter(f string) (string, filterOp, string, error) {
 		if i == 0 {
 			return "", 0, "", fmt.Errorf("invalid filter %q: empty key", f)
 		}
+		if i+2 == len(f) {
+			return "", 0, "", fmt.Errorf("invalid filter %q: empty regex", f)
+		}
 		return f[:i], opRegex, f[i+2:], nil
 	}
 	if i := strings.Index(f, "~"); i >= 0 {
 		if i == 0 {
 			return "", 0, "", fmt.Errorf("invalid filter %q: empty key", f)
+		}
+		if i+1 == len(f) {
+			return "", 0, "", fmt.Errorf("invalid filter %q: empty value", f)
 		}
 		return f[:i], opContains, f[i+1:], nil
 	}
@@ -142,6 +157,9 @@ func splitFilter(f string) (string, filterOp, string, error) {
 		if i == 0 {
 			return "", 0, "", fmt.Errorf("invalid filter %q: empty key", f)
 		}
+		// Note: empty value ("key=") is allowed and matches rows where the
+		// field's stringified value is empty; existing behaviour kept for
+		// backward compatibility.
 		return f[:i], opEq, f[i+1:], nil
 	}
 	return "", 0, "", fmt.Errorf("invalid filter %q: expected key=value, key~value, or key~=regex", f)
