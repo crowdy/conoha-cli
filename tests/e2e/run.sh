@@ -1,7 +1,7 @@
 #!/bin/bash
 # tests/e2e/run.sh — E2E harness for conoha-proxy blue/green deploy.
 #
-# Scope covers spec §8 Phases 1-3 / scenarios §3 #1-12:
+# Scope covers spec §8 Phases 1-3 + legacy-env scenarios §3 #1-14:
 #   1.  `conoha proxy boot`   — admin socket up, proxy container running.
 #   2.  `conoha app init`     — service upserted on the proxy's Admin API.
 #   3.  `conoha app deploy`   — first cycle: slot up, active target set,
@@ -14,9 +14,18 @@
 #   8.  `conoha app init` x2  — idempotent upsert.
 #   9.  `app env set` + deploy — new slot receives the set env (regression
 #                                guard for #94).
+#   13. `app env migrate`     — legacy /opt/conoha/<app>.env.server moves to
+#                               /opt/conoha/<app>/.env.server at 0600; idempotent.
+#   14. legacy-only env state — `env list` warns + prints value; `env set`
+#                               refuses with guard (exit 2 inside the remote
+#                               shell script, non-zero CLI exit).
 #   10. `conoha app destroy`  — proxy deregisters, /opt/conoha/<app> removed.
 #   11. `conoha app destroy` x2 — idempotent (locks in current behavior).
 #   12. `conoha proxy remove` — container gone, data dir kept without --purge.
+#
+# Step numbers match scenario IDs in the spec; #13/#14 run between #9 and #10
+# because they need the app to exist but must complete before destroy wipes
+# /opt/conoha/<app>/.
 #
 # Runs inside a DinD target (Ubuntu + dockerd + sshd) built from
 # tests/e2e/Dockerfile.target. A tiny compute-API stub (tests/e2e/stub)
@@ -345,6 +354,107 @@ if [ "$env_value" != "phase3-ok" ]; then
   exit 1
 fi
 echo "  E2E_SENTINEL=phase3-ok picked up by e2e-app-env-check-web"
+
+###############################################################################
+# Phase 3.5 (spec §3 #13-14 — legacy env path migration + deprecation)
+###############################################################################
+# Runs #14 before #13 because both need a legacy-only filesystem state and
+# running #14 first lets us reuse the same staged legacy file for #13's
+# migrate assertion.
+
+LEGACY_ENV_PATH='/opt/conoha/e2e-app.env.server'
+NEW_ENV_PATH='/opt/conoha/e2e-app/.env.server'
+
+log "Step 13/14 setup: stage legacy-only env state"
+ssh_exec "rm -f ${NEW_ENV_PATH}"
+ssh_exec "printf 'LEGACY_KEY=legacy-val\n' > ${LEGACY_ENV_PATH} && chmod 600 ${LEGACY_ENV_PATH}"
+
+log "Step 14: conoha app env list — expect legacy warning on stderr + value on stdout"
+list_out="$WORKDIR/legacy-list.out"
+list_err="$WORKDIR/legacy-list.err"
+"$CONOHA" app env list "${SSH_FLAGS[@]}" --app-name e2e-app e2e-target \
+    >"$list_out" 2>"$list_err"
+if ! grep -q '^LEGACY_KEY=legacy-val$' "$list_out"; then
+  echo "env list stdout missing LEGACY_KEY=legacy-val:" >&2
+  cat "$list_out" >&2
+  cat "$list_err" >&2
+  exit 1
+fi
+if ! grep -q 'legacy env file' "$list_err"; then
+  echo "env list stderr missing legacy warning:" >&2
+  cat "$list_err" >&2
+  exit 1
+fi
+echo "  env list warned on legacy path and still printed the value"
+
+log "Step 14 (cont.): conoha app env set — expect data-loss guard to refuse"
+# The remote guard script exits 2; the CLI surfaces that as the error string
+# "env set exited with code 2" and exits non-zero. We assert on the marker
+# string rather than the CLI's process exit code so this stays stable if the
+# CLI later maps the guard to a typed ExitCoder (currently ExitGeneral=1).
+set_err="$WORKDIR/legacy-set.err"
+if "$CONOHA" app env set "${SSH_FLAGS[@]}" --app-name e2e-app e2e-target \
+       NEWKEY=nope 2>"$set_err"; then
+  echo "env set unexpectedly succeeded on legacy-only state" >&2
+  cat "$set_err" >&2
+  exit 1
+fi
+if ! grep -q 'legacy env file' "$set_err"; then
+  echo "env set stderr missing guard message 'legacy env file':" >&2
+  cat "$set_err" >&2
+  exit 1
+fi
+if ! grep -q 'exited with code 2' "$set_err"; then
+  echo "env set stderr missing 'exited with code 2' marker from guard:" >&2
+  cat "$set_err" >&2
+  exit 1
+fi
+echo "  env set refused legacy-only state (guard exit 2)"
+
+log "  confirm legacy file untouched by the rejected env set"
+legacy_content="$(ssh_exec "cat ${LEGACY_ENV_PATH}")"
+if [ "$legacy_content" != "LEGACY_KEY=legacy-val" ]; then
+  echo "legacy env file was mutated by env set (should have been rejected):" >&2
+  echo "  got: $legacy_content" >&2
+  exit 1
+fi
+if ssh_exec "test -f ${NEW_ENV_PATH}"; then
+  echo "env set created ${NEW_ENV_PATH} despite guard — data-loss guard broken" >&2
+  exit 1
+fi
+
+log "Step 13: conoha app env migrate — move legacy → new at 0600"
+"$CONOHA" app env migrate "${SSH_FLAGS[@]}" --app-name e2e-app e2e-target
+
+if ssh_exec "test -f ${LEGACY_ENV_PATH}"; then
+  echo "legacy env file still present after migrate" >&2
+  exit 1
+fi
+migrated="$(ssh_exec "cat ${NEW_ENV_PATH}")"
+if [ "$migrated" != "LEGACY_KEY=legacy-val" ]; then
+  echo "migrated file content mismatch (want LEGACY_KEY=legacy-val):" >&2
+  echo "  got: $migrated" >&2
+  exit 1
+fi
+mode="$(ssh_exec "stat -c '%a' ${NEW_ENV_PATH}" | tr -d '\r\n')"
+if [ "$mode" != "600" ]; then
+  echo "migrated file mode expected 600, got: $mode" >&2
+  exit 1
+fi
+echo "  migrate moved legacy → new, content preserved, mode=600"
+
+log "  verify migrate is idempotent (second call is a no-op)"
+rerun_out="$WORKDIR/migrate-rerun.out"
+"$CONOHA" app env migrate "${SSH_FLAGS[@]}" --app-name e2e-app e2e-target \
+    >"$rerun_out"
+if ! grep -qi 'nothing to migrate' "$rerun_out"; then
+  echo "second migrate did not report 'Nothing to migrate':" >&2
+  cat "$rerun_out" >&2
+  exit 1
+fi
+echo "  second migrate was a no-op"
+
+log "Phase 3.5 passed (scenarios #13-14)"
 
 log "Step 10: conoha app destroy"
 ( cd "$PROJECT" && "$CONOHA" app destroy "${SSH_FLAGS[@]}" --yes --app-name e2e-app e2e-target )
