@@ -33,12 +33,15 @@ jobs:
           go-version: '1.26'
       - run: go build -o /dev/null ./...
 
-  # E2E Phase 1 (spec 2026-04-23-e2e-tests-design.md §8). Advisory until
-  # the DinD harness is proven stable across the 12-scenario set; promote
-  # to required in Phase 4.
+  # E2E DinD harness (spec 2026-04-23-e2e-tests-design.md §8).
+  # Gating on this job: the 14 scenarios in tests/e2e/run.sh cover the
+  # CLI ↔ conoha-proxy contract (boot, init, blue/green deploy + swap,
+  # rollback in/out of drain window, list, env set/migrate legacy path,
+  # destroy, proxy remove). Expected runtime is ~60-90s on ubuntu-latest.
+  # TLS/ACME and real-VPS bugs are out of scope — see docs/release-checklist.md
+  # for the manual smoke covering those.
   e2e:
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
