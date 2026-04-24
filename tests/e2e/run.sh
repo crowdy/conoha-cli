@@ -1,15 +1,22 @@
 #!/bin/bash
 # tests/e2e/run.sh — E2E harness for conoha-proxy blue/green deploy.
 #
-# Scope covers spec §8 Phases 1-2 / scenarios §3 #1-6:
-#   1. `conoha proxy boot`   — admin socket up, proxy container running.
-#   2. `conoha app init`     — service upserted on the proxy's Admin API.
-#   3. `conoha app deploy`   — first cycle: slot up, active target set,
-#                              `GET /` routes through the proxy.
-#   4. `conoha app deploy`   — second cycle: active swaps, draining_target
-#                              set, old slot container torn down after drain.
-#   5. `conoha app rollback` — within drain window: active swaps back.
-#   6. `conoha app rollback` — outside drain window: `no_drain_target` error.
+# Scope covers spec §8 Phases 1-3 / scenarios §3 #1-12:
+#   1.  `conoha proxy boot`   — admin socket up, proxy container running.
+#   2.  `conoha app init`     — service upserted on the proxy's Admin API.
+#   3.  `conoha app deploy`   — first cycle: slot up, active target set,
+#                               `GET /` routes through the proxy.
+#   4.  `conoha app deploy`   — second cycle: active swaps, draining_target
+#                               set, old slot container torn down after drain.
+#   5.  `conoha app rollback` — within drain window: active swaps back.
+#   6.  `conoha app rollback` — outside drain window: `no_drain_target` error.
+#   7.  `conoha app list`     — new service enumerated (regression guard for #95).
+#   8.  `conoha app init` x2  — idempotent upsert.
+#   9.  `app env set` + deploy — new slot receives the set env (regression
+#                                guard for #94).
+#   10. `conoha app destroy`  — proxy deregisters, /opt/conoha/<app> removed.
+#   11. `conoha app destroy` x2 — idempotent (locks in current behavior).
+#   12. `conoha proxy remove` — container gone, data dir kept without --purge.
 #
 # Runs inside a DinD target (Ubuntu + dockerd + sshd) built from
 # tests/e2e/Dockerfile.target. A tiny compute-API stub (tests/e2e/stub)
@@ -301,4 +308,85 @@ fi
 echo "  rollback failed as expected"
 
 log "Phase 2 passed (scenarios #4-6)"
+
+###############################################################################
+# Phase 3 (spec §8 / scenarios §3 #7-12)
+###############################################################################
+
+log "Step 7: conoha app list — expect e2e-app"
+list_out="$WORKDIR/list.out"
+"$CONOHA" app list "${SSH_FLAGS[@]}" e2e-target >"$list_out"
+if ! grep -q '^e2e-app[[:space:]]' "$list_out"; then
+  echo "app list did not include e2e-app:" >&2
+  cat "$list_out" >&2
+  exit 1
+fi
+echo "  list output:"
+sed 's/^/    /' "$list_out"
+
+log "Step 8: conoha app init (second call — idempotent upsert)"
+( cd "$PROJECT" && "$CONOHA" app init "${SSH_FLAGS[@]}" e2e-target )
+if ! svc_json | grep -q '"name":"e2e-app"'; then
+  echo "service e2e-app missing after second init" >&2
+  svc_json >&2
+  exit 1
+fi
+echo "  service still registered"
+
+log "Step 9: env set → deploy → env visible inside web container"
+"$CONOHA" app env set "${SSH_FLAGS[@]}" --app-name e2e-app e2e-target E2E_SENTINEL=phase3-ok
+( cd "$PROJECT" && "$CONOHA" app deploy "${SSH_FLAGS[@]}" --slot env-check e2e-target )
+env_value="$(ssh_exec \
+  'docker exec e2e-app-env-check-web printenv E2E_SENTINEL 2>/dev/null' || true)"
+env_value="$(printf '%s' "$env_value" | tr -d '\r\n')"
+if [ "$env_value" != "phase3-ok" ]; then
+  echo "E2E_SENTINEL not visible in new slot: got $(printf '%q' "$env_value")" >&2
+  ssh_exec 'docker exec e2e-app-env-check-web env' || true
+  exit 1
+fi
+echo "  E2E_SENTINEL=phase3-ok picked up by e2e-app-env-check-web"
+
+log "Step 10: conoha app destroy"
+( cd "$PROJECT" && "$CONOHA" app destroy "${SSH_FLAGS[@]}" --yes --app-name e2e-app e2e-target )
+
+log "  verify service deregistered from proxy"
+# /v1/services/<name> returns 404 after delete. curl -f: exit 22 on 4xx.
+if ssh_exec \
+    'curl -sf --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/e2e-app >/dev/null'; then
+  echo "service still returns 200 after destroy" >&2
+  exit 1
+fi
+echo "  admin API returned 404 as expected"
+
+log "  verify /opt/conoha/e2e-app removed"
+if ssh_exec 'test -d /opt/conoha/e2e-app'; then
+  echo "/opt/conoha/e2e-app still exists after destroy" >&2
+  ssh_exec 'ls -la /opt/conoha/' >&2
+  exit 1
+fi
+echo "  app dir removed"
+
+log "Step 11: conoha app destroy (second call — idempotent)"
+# "既存挙動 lock-in" per spec §3 #12: whatever current behavior is, pin it.
+# Today destroy is idempotent (rm -rf + compose down are no-ops when already
+# gone), so a second destroy must succeed. If the CLI later chooses to
+# error with 'not initialized', update this assertion together.
+( cd "$PROJECT" && "$CONOHA" app destroy "${SSH_FLAGS[@]}" --yes --app-name e2e-app e2e-target )
+echo "  second destroy succeeded (idempotent, as expected)"
+
+log "Step 12: conoha proxy remove — verify container gone, data dir kept"
+"$CONOHA" proxy remove "${SSH_FLAGS[@]}" e2e-target
+if ssh_exec 'docker inspect conoha-proxy >/dev/null 2>&1'; then
+  echo "conoha-proxy container still exists after remove" >&2
+  exit 1
+fi
+echo "  container removed"
+# No --purge passed, so /var/lib/conoha-proxy must survive.
+if ! ssh_exec 'test -d /var/lib/conoha-proxy'; then
+  echo "/var/lib/conoha-proxy unexpectedly removed without --purge" >&2
+  exit 1
+fi
+echo "  data dir /var/lib/conoha-proxy preserved"
+
+log "Phase 3 passed (scenarios #7-12)"
 log "E2E harness: all phases passed"
