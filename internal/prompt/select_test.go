@@ -81,4 +81,7 @@ func TestSelect_NoInput_ReturnsValidationError(t *testing.T) {
 	if !stderrors.As(err, &ve) {
 		t.Fatalf("hinted path: expected *ValidationError, got %T: %v", err, err)
 	}
+	if cerrors.GetExitCode(err) != cerrors.ExitValidation {
+		t.Errorf("hinted path: expected ExitValidation (%d), got %d", cerrors.ExitValidation, cerrors.GetExitCode(err))
+	}
 }
