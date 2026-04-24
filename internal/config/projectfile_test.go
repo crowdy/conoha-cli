@@ -128,6 +128,165 @@ func TestProjectFile_Validate(t *testing.T) {
 	}
 }
 
+func TestProjectFile_Validate_Expose(t *testing.T) {
+	base := func() ProjectFile {
+		return ProjectFile{
+			Name:  "myapp",
+			Hosts: []string{"app.example.com"},
+			Web:   WebSpec{Service: "web", Port: 8080},
+			Expose: []ExposeBlock{
+				{Label: "dex", Host: "dex.example.com", Service: "dex", Port: 5556},
+			},
+		}
+	}
+
+	t.Run("single valid block", func(t *testing.T) {
+		p := base()
+		if err := p.Validate(); err != nil {
+			t.Fatalf("valid expose should pass: %v", err)
+		}
+	})
+
+	t.Run("multiple valid blocks", func(t *testing.T) {
+		p := base()
+		p.Expose = append(p.Expose, ExposeBlock{Label: "api", Host: "api.example.com", Service: "api", Port: 8000})
+		if err := p.Validate(); err != nil {
+			t.Fatalf("two blocks should pass: %v", err)
+		}
+	})
+
+	cases := []struct {
+		name string
+		mod  func(*ProjectFile)
+		want string
+	}{
+		{"empty label", func(p *ProjectFile) { p.Expose[0].Label = "" }, "label"},
+		{"bad label", func(p *ProjectFile) { p.Expose[0].Label = "Dex_1" }, "DNS-1123"},
+		{"label too long with name",
+			func(p *ProjectFile) {
+				p.Name = "a-very-long-app-name-that-consumes-most-of-the-63-char-budget"
+				p.Expose[0].Label = "equally-long-label"
+			},
+			"exceeds 63"},
+		{"duplicate label",
+			func(p *ProjectFile) {
+				p.Expose = append(p.Expose, ExposeBlock{Label: "dex", Host: "other.example.com", Service: "other", Port: 81})
+			},
+			"duplicated"},
+		{"empty host", func(p *ProjectFile) { p.Expose[0].Host = "" }, "host"},
+		{"host not fqdn", func(p *ProjectFile) { p.Expose[0].Host = "not a host" }, "FQDN"},
+		{"host duplicates hosts[]",
+			func(p *ProjectFile) { p.Expose[0].Host = "app.example.com" },
+			"duplicates"},
+		{"duplicate host across expose",
+			func(p *ProjectFile) {
+				p.Expose = append(p.Expose, ExposeBlock{Label: "api", Host: "dex.example.com", Service: "api", Port: 81})
+			},
+			"duplicated"},
+		{"service equals web.service",
+			func(p *ProjectFile) { p.Expose[0].Service = "web" },
+			"web.service"},
+		{"service in accessories",
+			func(p *ProjectFile) {
+				p.Accessories = []string{"dex"}
+				p.Expose[0].Service = "dex"
+			},
+			"accessory"},
+		{"duplicate service across expose",
+			func(p *ProjectFile) {
+				p.Expose = append(p.Expose, ExposeBlock{Label: "api", Host: "api.example.com", Service: "dex", Port: 81})
+			},
+			"duplicated"},
+		{"port zero", func(p *ProjectFile) { p.Expose[0].Port = 0 }, "port"},
+		{"port too high", func(p *ProjectFile) { p.Expose[0].Port = 70000 }, "port"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := base()
+			tc.mod(&p)
+			err := p.Validate()
+			if err == nil {
+				t.Fatalf("want error containing %q, got nil", tc.want)
+			}
+			if !contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want substring %q", err.Error(), tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateAgainstCompose_Expose(t *testing.T) {
+	dir := t.TempDir()
+	compose := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(compose, []byte("services:\n  web:\n    image: nginx\n  dex:\n    image: dex\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &ProjectFile{
+		Name:  "myapp",
+		Hosts: []string{"a.example.com"},
+		Web:   WebSpec{Service: "web", Port: 80},
+		Expose: []ExposeBlock{
+			{Label: "dex", Host: "dex.example.com", Service: "dex", Port: 5556},
+		},
+	}
+	if err := p.ValidateAgainstCompose(compose); err != nil {
+		t.Errorf("known expose service should pass: %v", err)
+	}
+
+	p.Expose[0].Service = "nonexistent"
+	err := p.ValidateAgainstCompose(compose)
+	if err == nil {
+		t.Fatal("missing expose.service should fail")
+	}
+	if !contains(err.Error(), "expose[0].service") {
+		t.Errorf("error should cite expose[0], got %q", err.Error())
+	}
+}
+
+func TestLoadProjectFile_Expose(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "conoha.yml")
+	data := []byte(`name: gitea
+hosts: [gitea.example.com]
+web:
+  service: gitea
+  port: 3000
+expose:
+  - label: dex
+    host: dex.example.com
+    service: dex
+    port: 5556
+    blue_green: false
+    health:
+      path: /healthz
+      interval_ms: 1000
+`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pf, err := LoadProjectFile(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(pf.Expose) != 1 {
+		t.Fatalf("Expose len = %d, want 1", len(pf.Expose))
+	}
+	e := pf.Expose[0]
+	if e.Label != "dex" || e.Host != "dex.example.com" || e.Service != "dex" || e.Port != 5556 {
+		t.Errorf("Expose[0] = %+v", e)
+	}
+	if e.BlueGreen == nil || *e.BlueGreen != false {
+		t.Errorf("BlueGreen = %v, want *bool -> false", e.BlueGreen)
+	}
+	if e.Health == nil || e.Health.Path != "/healthz" {
+		t.Errorf("Health = %+v", e.Health)
+	}
+	if err := pf.Validate(); err != nil {
+		t.Errorf("loaded fixture Validate: %v", err)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {
