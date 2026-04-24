@@ -80,15 +80,9 @@ func runInitProxy(cmd *cobra.Command, serverID string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "==> Registering service %q on %s (%s)\n", pf.Name, s.Name, ip)
-	svc, err := client.Upsert(proxypkg.UpsertRequest{
-		Name:         pf.Name,
-		Hosts:        pf.Hosts,
-		HealthPolicy: mapHealth(pf.Health),
-	})
-	if err != nil {
+	if err := registerProxyServices(client, pf, os.Stderr); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Service %q registered. phase=%s tls=%s\n", svc.Name, svc.Phase, svc.TLSStatus)
 	if err := WriteMarker(sshClient, pf.Name, ModeProxy); err != nil {
 		return fmt.Errorf("write mode marker: %w", err)
 	}
