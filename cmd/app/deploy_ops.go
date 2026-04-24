@@ -34,10 +34,12 @@ type DeployOps interface {
 }
 
 // DeployProxyAPI is the subset of proxypkg.Client that runProxyDeploy uses.
-// Kept tight so fakes don't drift.
+// Kept tight so fakes don't drift. Rollback is wired in for phase 3's
+// reverse-rollback-on-partial-failure path.
 type DeployProxyAPI interface {
 	Get(name string) (*proxypkg.Service, error)
 	Deploy(name string, req proxypkg.DeployRequest) (*proxypkg.Service, error)
+	Rollback(name string, drainMs int) (*proxypkg.Service, error)
 }
 
 // sshDeployOps is the production DeployOps: wraps a live *ssh.Client +

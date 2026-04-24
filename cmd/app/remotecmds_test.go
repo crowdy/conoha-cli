@@ -19,7 +19,7 @@ func TestBuildSlotUploadCmd(t *testing.T) {
 }
 
 func TestBuildComposeUp_Slot(t *testing.T) {
-	got := buildSlotComposeUp("/opt/conoha/myapp/abc1234", "myapp-abc1234", "compose.yml", "override.yml", "web")
+	got := buildSlotComposeUp("/opt/conoha/myapp/abc1234", "myapp-abc1234", "compose.yml", "override.yml", []string{"web"})
 	for _, want := range []string{
 		"cd '/opt/conoha/myapp/abc1234'",
 		"docker compose -p myapp-abc1234 -f compose.yml -f override.yml",

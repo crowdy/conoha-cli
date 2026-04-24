@@ -229,8 +229,17 @@ func makeArchiveOfCwd() (io.Reader, error) {
 // runProxyDeployState drives the blue/green deploy state machine without
 // any direct SSH or filesystem dependencies. Every side effect flows
 // through ops, which tests substitute with a recording fake.
+//
+// Multi-block (phase 3 of the subdomain-split RFC): when pf.Expose has
+// any blue_green: true blocks, a single slot holds containers for the
+// root web service plus every such block, and proxy /deploy is called
+// once per block — expose blocks first, root web last. A partial failure
+// (424 probe_failed from block N) reverse-rolls back blocks 0..N-1 and
+// tears down the slot; 409 no_drain_target on a rollback degrades to a
+// warning and continues, per spec §7 Q-rollback default.
 func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 	pf := p.ProjectFile
+	blocks := collectDeployBlocks(pf)
 
 	// Service must exist — init registers it. Missing = user skipped init.
 	if _, err := ops.Proxy().Get(pf.Name); err != nil {
@@ -255,6 +264,9 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 
 	fmt.Fprintf(os.Stderr, "==> Deploying %q to %s (%s)\n", pf.Name, p.ServerName, p.ServerIP)
 	fmt.Fprintf(os.Stderr, "==> Slot: %s (compose project: %s)\n", slot, slotProjectName(pf.Name, slot))
+	if len(blocks) > 1 {
+		fmt.Fprintf(os.Stderr, "==> %d blue/green blocks in this deploy (root + %d expose)\n", len(blocks), len(blocks)-1)
+	}
 
 	// Upload archive to slot work dir.
 	archive, err := p.Archive()
@@ -266,8 +278,10 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 		return fmt.Errorf("upload: %w", err)
 	}
 
-	// Write compose override into the slot dir.
-	overrideContent := composeOverride(pf.Name, slot, pf.Web.Service, pf.Web.Port, len(pf.Accessories) > 0)
+	// Write compose override containing every block's service.
+	effectiveAccessories := collectEffectiveAccessories(pf)
+	hasAcc := len(effectiveAccessories) > 0
+	overrideContent := composeOverrideFor(pf.Name, slot, blocks, hasAcc)
 	overridePath := "conoha-override.yml"
 	writeOverride := fmt.Sprintf("cat > '%s/%s' <<'EOF'\n%sEOF", slotWork, overridePath, overrideContent)
 	if err := runRemoteOps(ops, writeOverride, nil); err != nil {
@@ -275,48 +289,78 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 	}
 
 	// First-run: bring up accessories (idempotent via existence probe).
-	if len(pf.Accessories) > 0 {
+	// BlueGreen:false expose blocks piggy-back on the same compose project
+	// so they stay up across slot rotations.
+	if hasAcc {
 		check := buildAccessoryExists(accessoryProjectName(pf.Name))
 		code, _, _ := ops.Run(check, nil)
 		if code != 0 {
-			fmt.Fprintf(os.Stderr, "==> Starting accessories: %v\n", pf.Accessories)
-			if err := runRemoteOps(ops, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), p.ComposeFile, pf.Accessories), nil); err != nil {
+			fmt.Fprintf(os.Stderr, "==> Starting accessories: %v\n", effectiveAccessories)
+			if err := runRemoteOps(ops, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), p.ComposeFile, effectiveAccessories), nil); err != nil {
 				return fmt.Errorf("accessory up: %w", err)
 			}
 		}
 	}
 
-	// Start the new slot's web service.
-	fmt.Fprintf(os.Stderr, "==> Building and starting %s in new slot\n", pf.Web.Service)
-	if err := runRemoteOps(ops, buildSlotComposeUp(slotWork, slotProjectName(pf.Name, slot), p.ComposeFile, overridePath, pf.Web.Service), nil); err != nil {
+	// Start every block's service in the new slot. Services MUST be listed
+	// explicitly; compose would otherwise start accessories too.
+	services := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		services = append(services, b.Service)
+	}
+	fmt.Fprintf(os.Stderr, "==> Building and starting %v in new slot\n", services)
+	if err := runRemoteOps(ops, buildSlotComposeUp(slotWork, slotProjectName(pf.Name, slot), p.ComposeFile, overridePath, services), nil); err != nil {
 		return fmt.Errorf("compose up (slot): %w", err)
 	}
 
-	// Discover kernel-picked host port.
-	containerName := fmt.Sprintf("%s-%s-%s", pf.Name, slot, pf.Web.Service)
-	_, portOut, portErr := ops.Run(buildDockerPortCmd(containerName, pf.Web.Port), nil)
-	if portErr != nil {
-		tearDownSlotOps(ops, pf.Name, slot)
-		return fmt.Errorf("docker port: %w", portErr)
+	// Discover kernel-picked host port per block.
+	targetURLs := make(map[int]string, len(blocks)) // index-into-blocks → url
+	for i, b := range blocks {
+		containerName := fmt.Sprintf("%s-%s-%s", pf.Name, slot, b.Service)
+		_, portOut, portErr := ops.Run(buildDockerPortCmd(containerName, b.Port), nil)
+		if portErr != nil {
+			tearDownSlotOps(ops, pf.Name, slot)
+			return fmt.Errorf("docker port %s: %w", b.Service, portErr)
+		}
+		hostPort, perr := extractHostPort(string(portOut))
+		if perr != nil {
+			tearDownSlotOps(ops, pf.Name, slot)
+			return fmt.Errorf("parse host port for %s: %w", b.Service, perr)
+		}
+		targetURLs[i] = fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+		fmt.Fprintf(os.Stderr, "==> %s → host port %d\n", b.Service, hostPort)
 	}
-	hostPort, err := extractHostPort(string(portOut))
-	if err != nil {
-		tearDownSlotOps(ops, pf.Name, slot)
-		return err
-	}
-	targetURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
-	fmt.Fprintf(os.Stderr, "==> Host port: %d. Calling proxy /deploy\n", hostPort)
 
 	drainMs := 30000
 	if pf.Deploy != nil && pf.Deploy.DrainMs > 0 {
 		drainMs = pf.Deploy.DrainMs
 	}
 
-	// Call proxy /deploy. On 424 the proxy did not mutate state — tear down new slot.
-	updated, err := ops.Proxy().Deploy(pf.Name, proxypkg.DeployRequest{TargetURL: targetURL, DrainMs: drainMs})
-	if err != nil {
-		tearDownSlotOps(ops, pf.Name, slot)
-		return err
+	// /deploy order: expose blocks first (indices 1..N-1), root web last
+	// (index 0). Rationale (spec §3.3): users hit root URLs which often
+	// redirect to sub-hosts (dex / admin); flipping sub-hosts first keeps
+	// the redirect consistent with the new code.
+	deployOrder := make([]int, 0, len(blocks))
+	for i := 1; i < len(blocks); i++ {
+		deployOrder = append(deployOrder, i)
+	}
+	deployOrder = append(deployOrder, 0)
+
+	swapped := make([]int, 0, len(blocks)) // blocks successfully /deploy'd
+	var rootUpdated *proxypkg.Service
+	for _, idx := range deployOrder {
+		b := blocks[idx]
+		fmt.Fprintf(os.Stderr, "==> Calling proxy /deploy on %q (target=%s)\n", b.ProxyName, targetURLs[idx])
+		svc, derr := ops.Proxy().Deploy(b.ProxyName, proxypkg.DeployRequest{TargetURL: targetURLs[idx], DrainMs: drainMs})
+		if derr != nil {
+			reverseRollbackBlocks(ops, blocks, swapped, drainMs)
+			tearDownSlotOps(ops, pf.Name, slot)
+			return derr
+		}
+		swapped = append(swapped, idx)
+		if idx == 0 {
+			rootUpdated = svc
+		}
 	}
 
 	// Read old slot pointer (empty on first deploy), then update to current.
@@ -345,11 +389,37 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 	}
 
 	active := "<unknown>"
-	if updated.ActiveTarget != nil {
-		active = updated.ActiveTarget.URL
+	if rootUpdated != nil && rootUpdated.ActiveTarget != nil {
+		active = rootUpdated.ActiveTarget.URL
 	}
-	fmt.Fprintf(os.Stderr, "Deploy complete. active=%s phase=%s\n", active, updated.Phase)
+	phase := ""
+	if rootUpdated != nil {
+		phase = string(rootUpdated.Phase)
+	}
+	fmt.Fprintf(os.Stderr, "Deploy complete. active=%s phase=%s\n", active, phase)
 	return nil
+}
+
+// reverseRollbackBlocks issues /rollback against every block in `swapped`
+// (reverse order) using the shared drainMs. 409 no_drain_target on any one
+// rollback degrades to a stderr warning and the loop continues — the spec
+// §7 Q-rollback default: drain window closed is safe (proxy already points
+// at previous target) and must not abort the wider recovery. Other errors
+// are also logged but don't stop the loop so every successful swap gets a
+// rollback attempt.
+func reverseRollbackBlocks(ops DeployOps, blocks []DeployBlock, swapped []int, drainMs int) {
+	for i := len(swapped) - 1; i >= 0; i-- {
+		idx := swapped[i]
+		b := blocks[idx]
+		fmt.Fprintf(os.Stderr, "==> Rolling back %q (partial deploy recovery)\n", b.ProxyName)
+		if _, err := ops.Proxy().Rollback(b.ProxyName, drainMs); err != nil {
+			if errors.Is(err, proxypkg.ErrNoDrainTarget) {
+				fmt.Fprintf(os.Stderr, "warning: drain window expired for %s; manual intervention required\n", b.ProxyName)
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "warning: rollback %s: %v\n", b.ProxyName, err)
+		}
+	}
 }
 
 // runRemote runs command on cli. When stdinData is non-nil it is streamed as stdin.
