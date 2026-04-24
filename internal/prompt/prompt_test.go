@@ -1,8 +1,12 @@
 package prompt
 
 import (
+	stderrors "errors"
 	"os"
+	"strings"
 	"testing"
+
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 func TestString_NoInput(t *testing.T) {
@@ -14,8 +18,12 @@ func TestString_NoInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when CONOHA_NO_INPUT=1")
 	}
-	if got := err.Error(); got != "input required but --no-input is set" {
-		t.Fatalf("unexpected error message: %s", got)
+	if !strings.Contains(err.Error(), "input required but --no-input is set") {
+		t.Fatalf("unexpected error message: %s", err.Error())
+	}
+	var ve *cerrors.ValidationError
+	if !stderrors.As(err, &ve) {
+		t.Fatalf("expected *ValidationError, got %T", err)
 	}
 }
 

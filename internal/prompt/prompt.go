@@ -9,12 +9,13 @@ import (
 	"golang.org/x/term"
 
 	"github.com/crowdy/conoha-cli/internal/config"
+	cerrors "github.com/crowdy/conoha-cli/internal/errors"
 )
 
 // String prompts the user for a string input.
 func String(label string) (string, error) {
 	if config.IsNoInput() {
-		return "", fmt.Errorf("input required but --no-input is set")
+		return "", &cerrors.ValidationError{Field: label, Message: "input required but --no-input is set"}
 	}
 	fmt.Fprintf(os.Stderr, "%s: ", label)
 	reader := bufio.NewReader(os.Stdin)
@@ -29,7 +30,7 @@ func String(label string) (string, error) {
 // Reads in raw terminal mode to support paste on WSL2.
 func Password(label string) (string, error) {
 	if config.IsNoInput() {
-		return "", fmt.Errorf("input required but --no-input is set")
+		return "", &cerrors.ValidationError{Field: label, Message: "input required but --no-input is set"}
 	}
 	fmt.Fprintf(os.Stderr, "%s: ", label)
 
