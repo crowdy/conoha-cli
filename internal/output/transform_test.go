@@ -2,6 +2,7 @@ package output
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,165 @@ func TestFilterRows(t *testing.T) {
 		_, err := FilterRows(data, []string{"badfilter"})
 		if err == nil {
 			t.Error("expected error for invalid filter format")
+		}
+	})
+
+	t.Run("contains operator", func(t *testing.T) {
+		bigger := []filterTestItem{
+			{Name: "ubuntu-24.04", Status: "ACTIVE", Count: 1},
+			{Name: "debian-12", Status: "ACTIVE", Count: 2},
+			{Name: "ubuntu-22.04", Status: "STOPPED", Count: 3},
+		}
+		result, err := FilterRows(bigger, []string{"name~ubuntu"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(rows))
+		}
+		if rows[0].Name != "ubuntu-24.04" || rows[1].Name != "ubuntu-22.04" {
+			t.Errorf("unexpected rows: %+v", rows)
+		}
+	})
+
+	t.Run("contains is case insensitive", func(t *testing.T) {
+		result, err := FilterRows(data, []string{"status~ACTI"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(rows))
+		}
+	})
+
+	t.Run("regex operator", func(t *testing.T) {
+		bigger := []filterTestItem{
+			{Name: "ubuntu-24.04", Status: "ACTIVE", Count: 1},
+			{Name: "ubuntu-22.04", Status: "STOPPED", Count: 2},
+			{Name: "debian-12", Status: "ACTIVE", Count: 3},
+		}
+		result, err := FilterRows(bigger, []string{`name~=^ubuntu-\d+\.\d+$`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(rows))
+		}
+	})
+
+	t.Run("regex invalid", func(t *testing.T) {
+		_, err := FilterRows(data, []string{"name~=[unclosed"})
+		if err == nil {
+			t.Error("expected error for invalid regex")
+		}
+	})
+
+	t.Run("empty key", func(t *testing.T) {
+		for _, f := range []string{"=value", "~value", "~=value"} {
+			if _, err := FilterRows(data, []string{f}); err == nil {
+				t.Errorf("expected error for empty key filter %q", f)
+			}
+		}
+	})
+
+	t.Run("empty value rejected for ~ and ~=", func(t *testing.T) {
+		// Empty value for contains/regex would silently match every row —
+		// almost certainly a typo, so reject.
+		for _, f := range []string{"name~", "name~="} {
+			if _, err := FilterRows(data, []string{f}); err == nil {
+				t.Errorf("expected error for %q (empty value)", f)
+			}
+		}
+	})
+
+	t.Run("empty value allowed for = (match empty field)", func(t *testing.T) {
+		// Preserve historical behaviour: `key=` matches rows whose field
+		// stringifies to the empty string.
+		withEmpty := []filterTestItem{
+			{Name: "a", Status: "ACTIVE", Count: 1},
+			{Name: "", Status: "STOPPED", Count: 2},
+		}
+		result, err := FilterRows(withEmpty, []string{"name="})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 1 || rows[0].Status != "STOPPED" {
+			t.Errorf("expected the row with empty Name, got %+v", rows)
+		}
+	})
+
+	t.Run("ambiguous value hint", func(t *testing.T) {
+		// `name=a~b` parses as (field="name=a", contains "b") because ~ is
+		// checked before =. The resulting field-lookup failure should hint
+		// at the operator-splitting behaviour rather than a plain "unknown
+		// field" message.
+		_, err := FilterRows(data, []string{"name=a~b"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "=") || !strings.Contains(msg, "first operator") {
+			t.Errorf("expected ambiguity hint in error, got: %q", msg)
+		}
+	})
+
+	t.Run("unicode contains", func(t *testing.T) {
+		u := []filterTestItem{
+			{Name: "東京サーバー", Status: "ACTIVE", Count: 1},
+			{Name: "osaka-server", Status: "ACTIVE", Count: 2},
+		}
+		result, err := FilterRows(u, []string{"name~東京"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 1 || rows[0].Name != "東京サーバー" {
+			t.Errorf("expected Tokyo row, got %+v", rows)
+		}
+	})
+
+	t.Run("numeric regex vs contains semantics", func(t *testing.T) {
+		// Documenting the difference: contains "3" also matches 13/30/300;
+		// regex "^3$" anchors to exactly 3.
+		nums := []filterTestItem{
+			{Name: "a", Count: 3},
+			{Name: "b", Count: 13},
+			{Name: "c", Count: 30},
+		}
+		contains, err := FilterRows(nums, []string{"count~3"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(contains.([]filterTestItem)) != 3 {
+			t.Errorf("contains '3' should match 3/13/30, got %+v", contains)
+		}
+		regex, err := FilterRows(nums, []string{"count~=^3$"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := regex.([]filterTestItem)
+		if len(got) != 1 || got[0].Count != 3 {
+			t.Errorf("regex '^3$' should match only 3, got %+v", got)
+		}
+	})
+
+	t.Run("combined operators AND", func(t *testing.T) {
+		bigger := []filterTestItem{
+			{Name: "ubuntu-24.04", Status: "ACTIVE", Count: 1},
+			{Name: "ubuntu-22.04", Status: "STOPPED", Count: 2},
+			{Name: "debian-12", Status: "ACTIVE", Count: 3},
+		}
+		result, err := FilterRows(bigger, []string{"name~ubuntu", "status=ACTIVE"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 1 || rows[0].Name != "ubuntu-24.04" {
+			t.Errorf("expected [ubuntu-24.04 ACTIVE], got %+v", rows)
 		}
 	})
 
