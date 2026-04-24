@@ -85,7 +85,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "skip confirmation prompts")
 	rootCmd.PersistentFlags().BoolVar(&flagSSHInsecure, "insecure", false, "disable SSH host-key verification (not recommended; for lab / throwaway VPS)")
 	rootCmd.PersistentFlags().Bool("no-headers", false, "hide table/CSV headers")
-	rootCmd.PersistentFlags().StringArray("filter", nil, "filter rows by key=value (repeatable)")
+	rootCmd.PersistentFlags().StringArray("filter", nil, "filter rows: key=value (exact), key~value (contains), key~=regex (repeatable)")
 	rootCmd.PersistentFlags().String("sort-by", "", "sort rows by field name")
 
 	rootCmd.AddCommand(versionCmd)

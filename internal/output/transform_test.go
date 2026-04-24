@@ -79,6 +79,83 @@ func TestFilterRows(t *testing.T) {
 		}
 	})
 
+	t.Run("contains operator", func(t *testing.T) {
+		bigger := []filterTestItem{
+			{Name: "ubuntu-24.04", Status: "ACTIVE", Count: 1},
+			{Name: "debian-12", Status: "ACTIVE", Count: 2},
+			{Name: "ubuntu-22.04", Status: "STOPPED", Count: 3},
+		}
+		result, err := FilterRows(bigger, []string{"name~ubuntu"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(rows))
+		}
+		if rows[0].Name != "ubuntu-24.04" || rows[1].Name != "ubuntu-22.04" {
+			t.Errorf("unexpected rows: %+v", rows)
+		}
+	})
+
+	t.Run("contains is case insensitive", func(t *testing.T) {
+		result, err := FilterRows(data, []string{"status~ACTI"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(rows))
+		}
+	})
+
+	t.Run("regex operator", func(t *testing.T) {
+		bigger := []filterTestItem{
+			{Name: "ubuntu-24.04", Status: "ACTIVE", Count: 1},
+			{Name: "ubuntu-22.04", Status: "STOPPED", Count: 2},
+			{Name: "debian-12", Status: "ACTIVE", Count: 3},
+		}
+		result, err := FilterRows(bigger, []string{`name~=^ubuntu-\d+\.\d+$`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(rows))
+		}
+	})
+
+	t.Run("regex invalid", func(t *testing.T) {
+		_, err := FilterRows(data, []string{"name~=[unclosed"})
+		if err == nil {
+			t.Error("expected error for invalid regex")
+		}
+	})
+
+	t.Run("empty key", func(t *testing.T) {
+		for _, f := range []string{"=value", "~value", "~=value"} {
+			if _, err := FilterRows(data, []string{f}); err == nil {
+				t.Errorf("expected error for empty key filter %q", f)
+			}
+		}
+	})
+
+	t.Run("combined operators AND", func(t *testing.T) {
+		bigger := []filterTestItem{
+			{Name: "ubuntu-24.04", Status: "ACTIVE", Count: 1},
+			{Name: "ubuntu-22.04", Status: "STOPPED", Count: 2},
+			{Name: "debian-12", Status: "ACTIVE", Count: 3},
+		}
+		result, err := FilterRows(bigger, []string{"name~ubuntu", "status=ACTIVE"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := result.([]filterTestItem)
+		if len(rows) != 1 || rows[0].Name != "ubuntu-24.04" {
+			t.Errorf("expected [ubuntu-24.04 ACTIVE], got %+v", rows)
+		}
+	})
+
 	t.Run("empty filters", func(t *testing.T) {
 		result, err := FilterRows(data, nil)
 		if err != nil {

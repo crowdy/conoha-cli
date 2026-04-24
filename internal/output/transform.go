@@ -3,13 +3,28 @@ package output
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 )
 
-// FilterRows filters a slice of structs by the given key=value filters.
-// Filters are ANDed. Field names are matched against json tags (case-insensitive).
-// Non-slice data is returned as-is.
+type filterOp int
+
+const (
+	opEq filterOp = iota
+	opContains
+	opRegex
+)
+
+// FilterRows filters a slice of structs by the given filters. Supported
+// operators (checked in order):
+//
+//	key~=regex  — field matches regex (case-insensitive)
+//	key~value   — field contains value (case-insensitive substring)
+//	key=value   — field exactly equals value (case-insensitive)
+//
+// Filters are ANDed. Field names are matched against json tags
+// (case-insensitive). Non-slice data is returned as-is.
 func FilterRows(data any, filters []string) (any, error) {
 	if len(filters) == 0 {
 		return data, nil
@@ -29,15 +44,25 @@ func FilterRows(data any, filters []string) (any, error) {
 	// Parse filters
 	type filterPair struct {
 		field string
+		op    filterOp
 		value string
+		re    *regexp.Regexp
 	}
 	var parsed []filterPair
 	for _, f := range filters {
-		parts := strings.SplitN(f, "=", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid filter %q: expected key=value", f)
+		key, op, value, err := splitFilter(f)
+		if err != nil {
+			return nil, err
 		}
-		parsed = append(parsed, filterPair{field: strings.ToLower(parts[0]), value: strings.ToLower(parts[1])})
+		fp := filterPair{field: strings.ToLower(key), op: op, value: strings.ToLower(value)}
+		if op == opRegex {
+			re, err := regexp.Compile("(?i)" + value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid filter %q: bad regex: %w", f, err)
+			}
+			fp.re = re
+		}
+		parsed = append(parsed, fp)
 	}
 
 	// Build field index map from json tags
@@ -77,7 +102,16 @@ func FilterRows(data any, filters []string) (any, error) {
 		for _, fp := range parsed {
 			idx := fieldIndex[fp.field]
 			fieldVal := strings.ToLower(fmt.Sprintf("%v", row.Field(idx).Interface()))
-			if fieldVal != fp.value {
+			var ok bool
+			switch fp.op {
+			case opContains:
+				ok = strings.Contains(fieldVal, fp.value)
+			case opRegex:
+				ok = fp.re.MatchString(fieldVal)
+			default:
+				ok = fieldVal == fp.value
+			}
+			if !ok {
 				match = false
 				break
 			}
@@ -87,6 +121,30 @@ func FilterRows(data any, filters []string) (any, error) {
 		}
 	}
 	return result.Interface(), nil
+}
+
+// splitFilter parses a filter expression into (key, op, value). Operators are
+// checked longest-first so "~=" is recognised before "~" or "=".
+func splitFilter(f string) (string, filterOp, string, error) {
+	if i := strings.Index(f, "~="); i >= 0 {
+		if i == 0 {
+			return "", 0, "", fmt.Errorf("invalid filter %q: empty key", f)
+		}
+		return f[:i], opRegex, f[i+2:], nil
+	}
+	if i := strings.Index(f, "~"); i >= 0 {
+		if i == 0 {
+			return "", 0, "", fmt.Errorf("invalid filter %q: empty key", f)
+		}
+		return f[:i], opContains, f[i+1:], nil
+	}
+	if i := strings.Index(f, "="); i >= 0 {
+		if i == 0 {
+			return "", 0, "", fmt.Errorf("invalid filter %q: empty key", f)
+		}
+		return f[:i], opEq, f[i+1:], nil
+	}
+	return "", 0, "", fmt.Errorf("invalid filter %q: expected key=value, key~value, or key~=regex", f)
 }
 
 // SortRows sorts a slice of structs by the given field name.
