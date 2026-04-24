@@ -9,6 +9,8 @@ health:
   # Probing / gives a 200 OK on the default welcome page.
   path: /
 deploy:
-  # Tight drain window keeps the harness under budget (spec §4.3). The
-  # default 30s would double this Phase's runtime without adding signal.
-  drain_ms: 2000
+  # Tight drain window keeps the harness under budget (spec §4.3). Must
+  # still be generous enough for the scenario #5 rollback to fire inside
+  # the window after deploy #2's trailing SSH round-trips, so we use 5s
+  # rather than 2s — the full harness is still under ~30s wall-clock.
+  drain_ms: 5000
