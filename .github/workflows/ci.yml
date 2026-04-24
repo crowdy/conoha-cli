@@ -22,7 +22,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
+      # skip-cache: the action's per-package analysis cache is keyed on
+      # go.mod/go.sum/config, not source content, so a previous "0 issues"
+      # result short-circuits re-analysis of files whose content would now
+      # violate a rule. See #136 for the concrete false-pass we saw on
+      # PR #134. ~20s extra per run is a fair trade for lint actually
+      # being a reliable signal.
       - uses: golangci/golangci-lint-action@v7
+        with:
+          skip-cache: true
 
   build:
     runs-on: ubuntu-latest
