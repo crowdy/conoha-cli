@@ -16,11 +16,16 @@ func buildSlotUploadCmd(workDir, _ string) string {
 		workDir)
 }
 
-// buildSlotComposeUp starts the single web service inside a slot-scoped project.
-func buildSlotComposeUp(workDir, project, composeFile, overrideFile, webService string) string {
+// buildSlotComposeUp starts the given compose services inside a slot-scoped
+// project. Services must be caller-validated (they come from pf.Web.Service /
+// expose.service which both flow through ValidateAgainstCompose). At least
+// one service is required — compose would otherwise start every service in
+// the file, including accessories the slot must not own.
+func buildSlotComposeUp(workDir, project, composeFile, overrideFile string, services []string) string {
+	args := strings.Join(services, " ")
 	return fmt.Sprintf(
 		"cd '%s' && docker compose -p %s -f %s -f %s up -d --build %s",
-		workDir, project, composeFile, overrideFile, webService)
+		workDir, project, composeFile, overrideFile, args)
 }
 
 // buildDockerPortCmd produces a command that prints the host:port mapping

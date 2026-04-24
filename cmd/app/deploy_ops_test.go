@@ -85,12 +85,31 @@ func (f *fakeOps) Proxy() DeployProxyAPI {
 
 // fakeProxyAPI is a minimal DeployProxyAPI fake.
 type fakeProxyAPI struct {
-	GetCalls     int
-	DeployCalls  []proxypkg.DeployRequest
-	GetReturn    *proxypkg.Service
-	GetErr       error
-	DeployReturn *proxypkg.Service
-	DeployErr    error
+	GetCalls      int
+	DeployCalls   []fakeDeployCall
+	RollbackCalls []fakeRollbackCall
+	GetReturn     *proxypkg.Service
+	GetErr        error
+	DeployReturn  *proxypkg.Service
+	// DeployErrByName lets tests inject per-service /deploy errors for the
+	// multi-block path. If nil, falls back to DeployErr (applied to every
+	// call) for compatibility with single-block tests.
+	DeployErrByName map[string]error
+	DeployErr       error
+	RollbackErr     error
+	// RollbackErrByName, like DeployErrByName, lets tests inject per-service
+	// rollback errors (ErrNoDrainTarget on one block, success on another).
+	RollbackErrByName map[string]error
+}
+
+type fakeDeployCall struct {
+	Name string
+	Req  proxypkg.DeployRequest
+}
+
+type fakeRollbackCall struct {
+	Name    string
+	DrainMs int
 }
 
 func (f *fakeProxyAPI) Get(name string) (*proxypkg.Service, error) {
@@ -105,7 +124,10 @@ func (f *fakeProxyAPI) Get(name string) (*proxypkg.Service, error) {
 }
 
 func (f *fakeProxyAPI) Deploy(name string, req proxypkg.DeployRequest) (*proxypkg.Service, error) {
-	f.DeployCalls = append(f.DeployCalls, req)
+	f.DeployCalls = append(f.DeployCalls, fakeDeployCall{Name: name, Req: req})
+	if err, ok := f.DeployErrByName[name]; ok {
+		return nil, err
+	}
 	if f.DeployErr != nil {
 		return nil, f.DeployErr
 	}
@@ -117,6 +139,17 @@ func (f *fakeProxyAPI) Deploy(name string, req proxypkg.DeployRequest) (*proxypk
 		Phase:        proxypkg.PhaseLive,
 		ActiveTarget: &proxypkg.Target{URL: req.TargetURL},
 	}, nil
+}
+
+func (f *fakeProxyAPI) Rollback(name string, drainMs int) (*proxypkg.Service, error) {
+	f.RollbackCalls = append(f.RollbackCalls, fakeRollbackCall{Name: name, DrainMs: drainMs})
+	if err, ok := f.RollbackErrByName[name]; ok {
+		return nil, err
+	}
+	if f.RollbackErr != nil {
+		return nil, f.RollbackErr
+	}
+	return &proxypkg.Service{Name: name, Phase: proxypkg.PhaseLive}, nil
 }
 
 // baseParams constructs a minimal proxyDeployParams suitable for most tests.
@@ -172,11 +205,14 @@ func TestRunProxyDeployState_HappyPath_FirstDeploy(t *testing.T) {
 	if len(ops.Proxy_.DeployCalls) != 1 {
 		t.Fatalf("expected 1 admin.Deploy call, got %d", len(ops.Proxy_.DeployCalls))
 	}
-	if got := ops.Proxy_.DeployCalls[0].TargetURL; got != "http://127.0.0.1:34567" {
+	if got := ops.Proxy_.DeployCalls[0].Req.TargetURL; got != "http://127.0.0.1:34567" {
 		t.Errorf("TargetURL = %q, want http://127.0.0.1:34567", got)
 	}
-	if got := ops.Proxy_.DeployCalls[0].DrainMs; got != 2000 {
+	if got := ops.Proxy_.DeployCalls[0].Req.DrainMs; got != 2000 {
 		t.Errorf("DrainMs = %d, want 2000 (from pf.Deploy override)", got)
+	}
+	if got := ops.Proxy_.DeployCalls[0].Name; got != "myapp" {
+		t.Errorf("Name = %q, want myapp", got)
 	}
 
 	// Expected command ordering:
