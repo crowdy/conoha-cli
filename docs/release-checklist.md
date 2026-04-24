@@ -39,17 +39,18 @@ iterate on an `rcN+1` tag.
 ## 2. VPS-only bug checks (spec §7.1)
 
 For each row: what you observe on this RC, compared to what the spec says
-should happen. Every row needs a yes/no on this checklist — if you waive
-one (e.g. ACME is rate-limited today), note the reason.
+should happen. Tick the `Done?` column (`[x]` = passed) for every row;
+leave `[ ]` and note the reason in the release notes if you waive one
+(e.g. ACME is rate-limited today) or it fails.
 
-| # | Bug class | What to run | Pass condition |
-|---|-----------|-------------|----------------|
-| 1 | **cloud-init timing** | `bin/conoha server create …` immediately followed by `bin/conoha proxy boot <server>` (no manual sleep). | `proxy boot` waits for cloud-init to complete before SSH-ing, then succeeds on first try. No `Connection refused`/`timeout` errors surface to the user. |
-| 2 | **systemd unit race** | `ssh <server> 'systemctl status docker conoha-proxy'` after step 1.3. | Both units are `active (running)`. `journalctl -u conoha-proxy` shows no `failed to connect to docker.sock` retries. |
-| 3 | **SSH known_hosts TOFU (#101)** | Connect from a fresh workstation (empty `~/.ssh/known_hosts`). Run `bin/conoha app status <server>` twice; between runs, `ssh-keygen -R <vps-ip>` to simulate a rebuild. | First run prompts for TOFU (or auto-accepts with `CONOHA_SSH_INSECURE=1`); second run (post-remove) re-prompts rather than silently pinning an old fingerprint. |
-| 4 | **ACME rate-limit degradation** | Trigger `app deploy` against a domain already past the LE weekly quota (reuse a known-throttled zone, or skip with reason). | CLI output ends with `TLS pending — degraded` rather than a plain-looking success. Proxy keeps serving HTTP. |
-| 5 | **DNS propagation** | `bin/conoha app init <server>` against a host whose A record was added <60s ago (before full NS propagation). | CLI either warns `hosts not yet reachable — deploy may fail until DNS propagates` or fails early with a clear message; no silent-succeed-then-502-later behavior. |
-| 6 | **ConoHa API response drift** | `bin/conoha flavor list`, `bin/conoha image list`, `bin/conoha keypair list` all against live API. | All three return non-empty tables with no `unexpected field` / `missing required` parse errors. If any parser is brittle, catch it here rather than during a `server create` mid-release. |
+| # | Bug class | What to run | Pass condition | Done? |
+|---|-----------|-------------|----------------|-------|
+| 1 | **cloud-init timing** | `bin/conoha server create …` immediately followed by `bin/conoha proxy boot <server>` (no manual sleep). | `proxy boot` waits for cloud-init to complete before SSH-ing, then succeeds on first try. No `Connection refused`/`timeout` errors surface to the user. | `[ ]` |
+| 2 | **systemd unit race** | `ssh <server> 'systemctl status docker conoha-proxy'` after step 1.3. | Both units are `active (running)`. `journalctl -u conoha-proxy` shows no `failed to connect to docker.sock` retries. | `[ ]` |
+| 3 | **SSH known_hosts TOFU (#101)** | Connect from a fresh workstation (empty `~/.ssh/known_hosts`). Run `bin/conoha app status <server>` twice; between runs, `ssh-keygen -R <vps-ip>` to simulate a rebuild. | First run prompts for TOFU (or auto-accepts with `CONOHA_SSH_INSECURE=1`); second run (post-remove) re-prompts rather than silently pinning an old fingerprint. | `[ ]` |
+| 4 | **ACME rate-limit degradation** | Trigger `app deploy` against a domain already past the LE weekly quota (reuse a known-throttled zone, or skip with reason). | CLI output ends with `TLS pending — degraded` rather than a plain-looking success. Proxy keeps serving HTTP. | `[ ]` |
+| 5 | **DNS propagation** | `bin/conoha app init <server>` against a host whose A record was added <60s ago (before full NS propagation). | CLI either warns `hosts not yet reachable — deploy may fail until DNS propagates` or fails early with a clear message; no silent-succeed-then-502-later behavior. | `[ ]` |
+| 6 | **ConoHa API response drift** | `bin/conoha flavor list`, `bin/conoha image list`, `bin/conoha keypair list` all against live API. | All three return non-empty tables with no `unexpected field` / `missing required` parse errors. If any parser is brittle, catch it here rather than during a `server create` mid-release. | `[ ]` |
 
 Link the run output (asciinema / terminal log / screenshots) in the release notes.
 
@@ -59,8 +60,12 @@ If §1 is green and every row in §2 is either ✓ or justified-waived:
 
 1. Push the RC tag: `git tag v0.2.0-rcN && git push origin v0.2.0-rcN`.
 2. Wait for `CI / e2e` to pass on the tag.
-3. If no regressions emerge within the agreed-on soak period, cut the
-   final tag: `git tag -s v0.2.0 && git push origin v0.2.0`.
+3. Soak the RC tag against a pre-prod ConoHa account under realistic
+   load for **24h** (or **1 week wall-clock** if no pre-prod environment
+   is available). If no regressions emerge, cut the final tag:
+   `git tag -s v0.2.0 && git push origin v0.2.0`. If you shorten the
+   soak for a time-sensitive release, record the reason in the release
+   notes.
 4. Run `gh release create v0.2.0 --generate-notes` and edit the body to
    link back to this checklist run.
 
