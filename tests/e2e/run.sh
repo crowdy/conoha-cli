@@ -9,7 +9,11 @@
 #   4.  `conoha app deploy`   — second cycle: active swaps, draining_target
 #                               set, old slot container torn down after drain.
 #   5.  `conoha app rollback` — within drain window: active swaps back.
-#   6.  `conoha app rollback` — outside drain window: `no_drain_target` error.
+#   6.  `conoha app rollback` — outside drain window:
+#                               6a. default (no --target): degrade to stderr
+#                                   warning + exit 0 (loop-friendly contract).
+#                               6b. --target=web: stays fatal with the typed
+#                                   "drain window has closed" error.
 #   7.  `conoha app list`     — new service enumerated (regression guard for #95).
 #   8.  `conoha app init` x2  — idempotent upsert.
 #   9.  `app env set` + deploy — new slot receives the set env (regression
@@ -293,19 +297,48 @@ if [ "$draining_rb" != "$green_url" ]; then
 fi
 assert_http_routed
 
-log "Step 6: wait past drain window, then rollback — expect no_drain_target"
+log "Step 6: wait past drain window, then rollback — dual contract"
 # --drain-ms 2000 on the step-5 rollback + slack past the deadline. We
 # intentionally do NOT pre-check that draining_target is cleared in the
 # admin GET: the proxy's rollback endpoint returns 409 based on the
 # deadline, not on whether its internal sweep has fired yet, so asserting
 # the JSON field would couple this test to sweep timing without covering
 # anything the scenario requires.
+#
+# Phase 4 (#162) split rollback into two semantic branches and both must
+# stay covered:
+#   6a. Default (no --target) calls runRollbackAll: 409 on any one block
+#       degrades to a stderr warning and the loop continues; the process
+#       still exits 0 if no other block produced a hard error. This keeps
+#       a single drained-out sub-host from blocking the rest of the app.
+#   6b. --target=web pins runRollbackSingle: the user explicitly named
+#       this block, so 409 stays fatal with a typed "drain window has
+#       closed" error.
+# Step 6a does not mutate proxy state (the 409 is a no-op for the service),
+# so 6b sees the same expired-deadline state and triggers 409 again.
 sleep 4
 
-log "  attempt rollback — expect drain-window error"
-rb_err="$WORKDIR/rb.err"
-if ( cd "$PROJECT" && "$CONOHA" app rollback "${SSH_FLAGS[@]}" e2e-target ) 2>"$rb_err"; then
-  echo "rollback unexpectedly succeeded after drain window expired" >&2
+log "  Step 6a: default rollback (no --target) — expect warning + exit 0"
+rb_out="$WORKDIR/rb6a.out"
+rb_err="$WORKDIR/rb6a.err"
+if ! ( cd "$PROJECT" && "$CONOHA" app rollback "${SSH_FLAGS[@]}" e2e-target ) \
+      >"$rb_out" 2>"$rb_err"; then
+  echo "default rollback unexpectedly failed after drain window expired:" >&2
+  cat "$rb_err" >&2
+  exit 1
+fi
+if ! grep -qi 'drain window expired for e2e-app' "$rb_err"; then
+  echo "expected 'drain window expired for e2e-app' warning in stderr; got:" >&2
+  cat "$rb_err" >&2
+  exit 1
+fi
+echo "  default rollback warned and exited 0 as expected"
+
+log "  Step 6b: --target=web rollback — expect fatal drain-window error"
+rb_err="$WORKDIR/rb6b.err"
+if ( cd "$PROJECT" && "$CONOHA" app rollback "${SSH_FLAGS[@]}" --target=web e2e-target ) \
+      2>"$rb_err"; then
+  echo "--target=web rollback unexpectedly succeeded after drain window expired" >&2
   cat "$rb_err" >&2
   exit 1
 fi
@@ -314,7 +347,7 @@ if ! grep -qi 'drain window has closed' "$rb_err"; then
   cat "$rb_err" >&2
   exit 1
 fi
-echo "  rollback failed as expected"
+echo "  --target=web rollback failed as expected"
 
 log "Phase 2 passed (scenarios #4-6)"
 
