@@ -23,7 +23,7 @@ func TestBuildComposeUp_Slot(t *testing.T) {
 	for _, want := range []string{
 		"cd '/opt/conoha/myapp/abc1234'",
 		"docker compose -p myapp-abc1234 -f compose.yml -f override.yml",
-		"up -d --build web",
+		"up -d --build --no-deps web",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)
@@ -82,11 +82,27 @@ func TestBuildScheduleDrainCmd(t *testing.T) {
 }
 
 func TestBuildAccessoryUp(t *testing.T) {
-	got := buildAccessoryUp("/opt/conoha/myapp/abc1234", "myapp-accessories", "compose.yml", []string{"db", "redis"})
+	got := buildAccessoryUp("/opt/conoha/myapp/abc1234", "myapp-accessories", "compose.yml", "", []string{"db", "redis"})
 	for _, want := range []string{
 		"docker compose -p myapp-accessories",
 		"-f compose.yml",
 		"up -d db redis",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, "conoha-accessories-override.yml") {
+		t.Errorf("override path leaked when overrideFile=\"\": %s", got)
+	}
+}
+
+func TestBuildAccessoryUp_WithOverride(t *testing.T) {
+	got := buildAccessoryUp("/opt/conoha/myapp/abc1234", "myapp-accessories", "compose.yml", "conoha-accessories-override.yml", []string{"db", "dex"})
+	for _, want := range []string{
+		"-f compose.yml",
+		"-f conoha-accessories-override.yml",
+		"up -d db dex",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)

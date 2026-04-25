@@ -77,3 +77,25 @@ func collectEffectiveAccessories(pf *config.ProjectFile) []string {
 	}
 	return out
 }
+
+// collectFixedExposeBlocks returns expose blocks whose BlueGreen is
+// explicitly false. They live in the accessory compose project but still
+// need a host-port mapping (so the proxy can route to them) and a proxy
+// /deploy call to set the active target. Order: declaration order.
+func collectFixedExposeBlocks(pf *config.ProjectFile) []DeployBlock {
+	var out []DeployBlock
+	for i := range pf.Expose {
+		b := &pf.Expose[i]
+		if b.BlueGreen == nil || *b.BlueGreen {
+			continue
+		}
+		out = append(out, DeployBlock{
+			Label:     b.Label,
+			Service:   b.Service,
+			Port:      b.Port,
+			Host:      b.Host,
+			ProxyName: exposeServiceName(pf.Name, b.Label),
+		})
+	}
+	return out
+}

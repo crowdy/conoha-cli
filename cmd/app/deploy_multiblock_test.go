@@ -59,7 +59,7 @@ func TestRunProxyDeployState_TwoBlocks_HappyPath(t *testing.T) {
 	// Override YAML has both services.
 	mustPresent(t, ops.Commands, "container_name: myapp-abc1234-web")
 	mustPresent(t, ops.Commands, "container_name: myapp-abc1234-dex")
-	mustPresent(t, ops.Commands, "up -d --build web dex")
+	mustPresent(t, ops.Commands, "up -d --build --no-deps web dex")
 
 	// No teardown of new slot on success.
 	mustAbsent(t, ops.Commands, "down 2>/dev/null")
@@ -153,9 +153,9 @@ func TestRunProxyDeployState_TwoBlocks_RollbackDrainExpiredDegrades(t *testing.T
 }
 
 func TestRunProxyDeployState_BlueGreenFalseExposeGoesToAccessories(t *testing.T) {
-	// blue_green:false expose block must NOT participate in the slot /deploy
-	// loop, but its service is added to the accessory compose project so it
-	// stays up across rotations.
+	// blue_green:false expose block doesn't participate in slot rotation
+	// (no slot /deploy entry), but the proxy still gets a target — the
+	// accessory-project container's host port. See issue #163.
 	p := baseParams()
 	falseB := false
 	p.ProjectFile.Expose = []config.ExposeBlock{
@@ -163,8 +163,10 @@ func TestRunProxyDeployState_BlueGreenFalseExposeGoesToAccessories(t *testing.T)
 	}
 
 	ops := multiBlockOps()
-	// port maps only for the blocks we actually bring up in the slot (root).
+	// No slot dex container to port-discover (it's not in the slot blocks).
 	delete(ops.Overrides, "docker port myapp-abc1234-dex 5556")
+	// Accessory project's docker-default container name = "<project>-<service>-1".
+	ops.Overrides["docker port myapp-accessories-studio-1 3000"] = fakeOpsResponse{ExitCode: 0, Stdout: "127.0.0.1:39000\n"}
 	// No accessories yet → existence probe returns non-zero (will trigger up).
 	ops.Overrides["docker compose -p myapp-accessories ps -q"] = fakeOpsResponse{ExitCode: 1, Stdout: "0\n"}
 
@@ -172,16 +174,25 @@ func TestRunProxyDeployState_BlueGreenFalseExposeGoesToAccessories(t *testing.T)
 		t.Fatalf("deploy failed: %v", err)
 	}
 
-	// One /deploy only (root).
-	if n := len(ops.Proxy_.DeployCalls); n != 1 {
-		t.Fatalf("deploys = %d, want 1 (only root rotates; blue_green:false expose is accessory-style)", n)
+	// Two /deploy calls: the fixed expose (admin) is pushed before slot deploys,
+	// then root web from the slot loop.
+	if n := len(ops.Proxy_.DeployCalls); n != 2 {
+		t.Fatalf("deploys = %d, want 2 (fixed expose + root web)", n)
 	}
-	if ops.Proxy_.DeployCalls[0].Name != "myapp" {
-		t.Errorf("only root should be deployed, got %q", ops.Proxy_.DeployCalls[0].Name)
+	if ops.Proxy_.DeployCalls[0].Name != "myapp-admin" {
+		t.Errorf("first deploy should be the fixed expose %q, got %q", "myapp-admin", ops.Proxy_.DeployCalls[0].Name)
 	}
-	// accessory compose up includes the blue_green:false service.
+	if ops.Proxy_.DeployCalls[0].Req.TargetURL != "http://127.0.0.1:39000" {
+		t.Errorf("fixed expose target = %q, want http://127.0.0.1:39000", ops.Proxy_.DeployCalls[0].Req.TargetURL)
+	}
+	if ops.Proxy_.DeployCalls[1].Name != "myapp" {
+		t.Errorf("last deploy should be root, got %q", ops.Proxy_.DeployCalls[1].Name)
+	}
+	// Accessory compose up still brings the service up alongside any true accessories.
 	mustPresent(t, ops.Commands, "-p myapp-accessories")
 	mustPresent(t, ops.Commands, "up -d studio")
+	// The accessory override (port mapping for blue_green:false expose) must be applied.
+	mustPresent(t, ops.Commands, "-f conoha-accessories-override.yml")
 }
 
 func TestCollectDeployBlocks_Shape(t *testing.T) {
