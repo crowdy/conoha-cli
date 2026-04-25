@@ -50,6 +50,31 @@ func composeOverride(app, slot, webService string, webPort int, hasAccessories b
 	return composeOverrideFor(app, slot, []DeployBlock{{Service: webService, Port: webPort}}, hasAccessories)
 }
 
+// composeOverrideForAccessories returns a compose override (YAML) that
+// publishes a host port and attaches .env.server for each fixed expose
+// block (BlueGreen:false). Returns empty string when there are no fixed
+// blocks, so the caller can skip writing/passing the file.
+//
+// Unlike composeOverrideFor, this override does NOT pin a slot-scoped
+// container_name (these containers are slot-agnostic and live in the
+// stable accessory project) and does NOT join the accessories network
+// (they ARE in that project's default network already).
+func composeOverrideForAccessories(app string, fixedBlocks []DeployBlock) string {
+	if len(fixedBlocks) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("services:\n")
+	for _, b := range fixedBlocks {
+		fmt.Fprintf(&sb, "  %s:\n", b.Service)
+		sb.WriteString("    ports:\n")
+		fmt.Fprintf(&sb, "      - \"127.0.0.1:0:%d\"\n", b.Port)
+		sb.WriteString("    env_file:\n")
+		fmt.Fprintf(&sb, "      - /opt/conoha/%s/.env.server\n", app)
+	}
+	return sb.String()
+}
+
 // slotProjectName is the compose -p value for a blue/green slot.
 func slotProjectName(app, slot string) string {
 	return fmt.Sprintf("%s-%s", app, slot)

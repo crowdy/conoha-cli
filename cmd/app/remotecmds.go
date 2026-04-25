@@ -21,10 +21,15 @@ func buildSlotUploadCmd(workDir, _ string) string {
 // expose.service which both flow through ValidateAgainstCompose). At least
 // one service is required — compose would otherwise start every service in
 // the file, including accessories the slot must not own.
+//
+// `--no-deps` is set: cross-service depends_on can drag accessory or
+// blue_green:false expose services into the slot project, where they
+// would start without the override env_file and crash. Slot services
+// reach accessories via the shared `accessories` network instead.
 func buildSlotComposeUp(workDir, project, composeFile, overrideFile string, services []string) string {
 	args := strings.Join(services, " ")
 	return fmt.Sprintf(
-		"cd '%s' && docker compose -p %s -f %s -f %s up -d --build %s",
+		"cd '%s' && docker compose -p %s -f %s -f %s up -d --build --no-deps %s",
 		workDir, project, composeFile, overrideFile, args)
 }
 
@@ -97,11 +102,18 @@ func buildScheduleDrainCmd(workDir, project, app, slot string, drainMs int) stri
 // buildAccessoryUp starts the accessories listed, using a dedicated compose
 // project so they survive slot teardown. WorkDir is the slot's work directory —
 // we read the compose file from there because accessories share the same file.
-func buildAccessoryUp(workDir, project, composeFile string, accessories []string) string {
+// overrideFile is optional (empty string means none); when set it's a path
+// relative to workDir that publishes host ports for blue_green:false expose
+// blocks so the proxy can reach them.
+func buildAccessoryUp(workDir, project, composeFile, overrideFile string, accessories []string) string {
 	args := strings.Join(accessories, " ")
+	overrideArg := ""
+	if overrideFile != "" {
+		overrideArg = fmt.Sprintf("-f %s ", overrideFile)
+	}
 	return fmt.Sprintf(
-		"cd '%s' && docker compose -p %s -f %s up -d %s",
-		workDir, project, composeFile, args)
+		"cd '%s' && docker compose -p %s -f %s %sup -d %s",
+		workDir, project, composeFile, overrideArg, args)
 }
 
 // buildAccessoryExists reports (via shell exit 0/1) whether the accessory project

@@ -281,11 +281,24 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 	// Write compose override containing every block's service.
 	effectiveAccessories := collectEffectiveAccessories(pf)
 	hasAcc := len(effectiveAccessories) > 0
+	fixedExpose := collectFixedExposeBlocks(pf)
 	overrideContent := composeOverrideFor(pf.Name, slot, blocks, hasAcc)
 	overridePath := "conoha-override.yml"
 	writeOverride := fmt.Sprintf("cat > '%s/%s' <<'EOF'\n%sEOF", slotWork, overridePath, overrideContent)
 	if err := runRemoteOps(ops, writeOverride, nil); err != nil {
 		return fmt.Errorf("write override: %w", err)
+	}
+
+	// Accessory override: publishes host ports + .env.server for any
+	// blue_green:false expose blocks. Empty string when there are none —
+	// buildAccessoryUp treats that as "no override".
+	accOverridePath := ""
+	if accOverrideContent := composeOverrideForAccessories(pf.Name, fixedExpose); accOverrideContent != "" {
+		accOverridePath = "conoha-accessories-override.yml"
+		writeAccOverride := fmt.Sprintf("cat > '%s/%s' <<'EOF'\n%sEOF", slotWork, accOverridePath, accOverrideContent)
+		if err := runRemoteOps(ops, writeAccOverride, nil); err != nil {
+			return fmt.Errorf("write accessory override: %w", err)
+		}
 	}
 
 	// First-run: bring up accessories (idempotent via existence probe).
@@ -296,9 +309,32 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 		code, _, _ := ops.Run(check, nil)
 		if code != 0 {
 			fmt.Fprintf(os.Stderr, "==> Starting accessories: %v\n", effectiveAccessories)
-			if err := runRemoteOps(ops, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), p.ComposeFile, effectiveAccessories), nil); err != nil {
+			if err := runRemoteOps(ops, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), p.ComposeFile, accOverridePath, effectiveAccessories), nil); err != nil {
 				return fmt.Errorf("accessory up: %w", err)
 			}
+		}
+	}
+
+	// Push proxy targets for fixed (blue_green:false) expose blocks. They
+	// don't slot-rotate, so the deploy is a one-shot per app deploy: read
+	// the host port chosen by docker (stable across idempotent ups) and
+	// hand it to proxy /deploy. Done before slot deploy so a fresh root
+	// web slot already finds its sub-services on the new target.
+	for _, b := range fixedExpose {
+		containerName := fmt.Sprintf("%s-%s-1", accessoryProjectName(pf.Name), b.Service)
+		_, portOut, portErr := ops.Run(buildDockerPortCmd(containerName, b.Port), nil)
+		if portErr != nil {
+			return fmt.Errorf("docker port %s (accessory): %w", b.Service, portErr)
+		}
+		hostPort, perr := extractHostPort(string(portOut))
+		if perr != nil {
+			return fmt.Errorf("parse host port for %s (accessory): %w", b.Service, perr)
+		}
+		targetURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+		fmt.Fprintf(os.Stderr, "==> %s (accessory) → host port %d\n", b.Service, hostPort)
+		fmt.Fprintf(os.Stderr, "==> Calling proxy /deploy on %q (target=%s)\n", b.ProxyName, targetURL)
+		if _, derr := ops.Proxy().Deploy(b.ProxyName, proxypkg.DeployRequest{TargetURL: targetURL, DrainMs: 0}); derr != nil {
+			return fmt.Errorf("proxy deploy %s: %w", b.ProxyName, derr)
 		}
 	}
 
