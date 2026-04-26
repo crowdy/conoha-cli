@@ -226,7 +226,7 @@ func TestRunProxyDeployState_HappyPath_FirstDeploy(t *testing.T) {
 	mustOrdered(t, ops.Commands,
 		"tar xzf",
 		"conoha-override.yml",
-		"docker compose -p myapp-abc1234",
+		"docker compose --env-file '/opt/conoha/myapp/.env.server' -p myapp-abc1234",
 		"docker port",
 		"CURRENT_SLOT",
 		"printf %s 'abc1234'",

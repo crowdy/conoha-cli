@@ -19,10 +19,11 @@ func TestBuildSlotUploadCmd(t *testing.T) {
 }
 
 func TestBuildComposeUp_Slot(t *testing.T) {
-	got := buildSlotComposeUp("/opt/conoha/myapp/abc1234", "myapp-abc1234", "compose.yml", "override.yml", []string{"web"})
+	got := buildSlotComposeUp("/opt/conoha/myapp/abc1234", "myapp-abc1234", "compose.yml", "override.yml", "myapp", []string{"web"})
 	for _, want := range []string{
 		"cd '/opt/conoha/myapp/abc1234'",
-		"docker compose -p myapp-abc1234 -f compose.yml -f override.yml",
+		"touch '/opt/conoha/myapp/.env.server'",
+		"docker compose --env-file '/opt/conoha/myapp/.env.server' -p myapp-abc1234 -f compose.yml -f override.yml",
 		"up -d --build --no-deps web",
 	} {
 		if !strings.Contains(got, want) {
@@ -82,9 +83,10 @@ func TestBuildScheduleDrainCmd(t *testing.T) {
 }
 
 func TestBuildAccessoryUp(t *testing.T) {
-	got := buildAccessoryUp("/opt/conoha/myapp/abc1234", "myapp-accessories", "compose.yml", "", []string{"db", "redis"})
+	got := buildAccessoryUp("/opt/conoha/myapp/abc1234", "myapp-accessories", "compose.yml", "", "myapp", []string{"db", "redis"})
 	for _, want := range []string{
-		"docker compose -p myapp-accessories",
+		"touch '/opt/conoha/myapp/.env.server'",
+		"docker compose --env-file '/opt/conoha/myapp/.env.server' -p myapp-accessories",
 		"-f compose.yml",
 		"up -d db redis",
 	} {
@@ -98,8 +100,9 @@ func TestBuildAccessoryUp(t *testing.T) {
 }
 
 func TestBuildAccessoryUp_WithOverride(t *testing.T) {
-	got := buildAccessoryUp("/opt/conoha/myapp/abc1234", "myapp-accessories", "compose.yml", "conoha-accessories-override.yml", []string{"db", "dex"})
+	got := buildAccessoryUp("/opt/conoha/myapp/abc1234", "myapp-accessories", "compose.yml", "conoha-accessories-override.yml", "myapp", []string{"db", "dex"})
 	for _, want := range []string{
+		"--env-file '/opt/conoha/myapp/.env.server'",
 		"-f compose.yml",
 		"-f conoha-accessories-override.yml",
 		"up -d db dex",

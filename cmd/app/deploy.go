@@ -309,7 +309,7 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 		code, _, _ := ops.Run(check, nil)
 		if code != 0 {
 			fmt.Fprintf(os.Stderr, "==> Starting accessories: %v\n", effectiveAccessories)
-			if err := runRemoteOps(ops, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), p.ComposeFile, accOverridePath, effectiveAccessories), nil); err != nil {
+			if err := runRemoteOps(ops, buildAccessoryUp(slotWork, accessoryProjectName(pf.Name), p.ComposeFile, accOverridePath, pf.Name, effectiveAccessories), nil); err != nil {
 				return fmt.Errorf("accessory up: %w", err)
 			}
 		}
@@ -345,7 +345,7 @@ func runProxyDeployState(p proxyDeployParams, ops DeployOps) error {
 		services = append(services, b.Service)
 	}
 	fmt.Fprintf(os.Stderr, "==> Building and starting %v in new slot\n", services)
-	if err := runRemoteOps(ops, buildSlotComposeUp(slotWork, slotProjectName(pf.Name, slot), p.ComposeFile, overridePath, services), nil); err != nil {
+	if err := runRemoteOps(ops, buildSlotComposeUp(slotWork, slotProjectName(pf.Name, slot), p.ComposeFile, overridePath, pf.Name, services), nil); err != nil {
 		return fmt.Errorf("compose up (slot): %w", err)
 	}
 

@@ -26,11 +26,19 @@ func buildSlotUploadCmd(workDir, _ string) string {
 // blue_green:false expose services into the slot project, where they
 // would start without the override env_file and crash. Slot services
 // reach accessories via the shared `accessories` network instead.
-func buildSlotComposeUp(workDir, project, composeFile, overrideFile string, services []string) string {
+//
+// `--env-file` points at /opt/conoha/<app>/.env.server so compose's
+// interpolation context (`${KEY:-default}` in the user's compose.yml)
+// sees user-set values from `app env set`. Without this, env_file in the
+// override would lose to compose's `environment:` block at parse time —
+// see #166. `touch` ensures the file exists before compose validates the
+// flag (compose errors on missing --env-file targets).
+func buildSlotComposeUp(workDir, project, composeFile, overrideFile, app string, services []string) string {
 	args := strings.Join(services, " ")
+	envFile := envFilePath(app)
 	return fmt.Sprintf(
-		"cd '%s' && docker compose -p %s -f %s -f %s up -d --build --no-deps %s",
-		workDir, project, composeFile, overrideFile, args)
+		"cd '%s' && touch '%s' && docker compose --env-file '%s' -p %s -f %s -f %s up -d --build --no-deps %s",
+		workDir, envFile, envFile, project, composeFile, overrideFile, args)
 }
 
 // buildDockerPortCmd produces a command that prints the host:port mapping
@@ -105,15 +113,19 @@ func buildScheduleDrainCmd(workDir, project, app, slot string, drainMs int) stri
 // overrideFile is optional (empty string means none); when set it's a path
 // relative to workDir that publishes host ports for blue_green:false expose
 // blocks so the proxy can reach them.
-func buildAccessoryUp(workDir, project, composeFile, overrideFile string, accessories []string) string {
+//
+// `--env-file` mirrors buildSlotComposeUp so accessories' compose.yml gets
+// the same .env.server-aware interpolation context. See #166.
+func buildAccessoryUp(workDir, project, composeFile, overrideFile, app string, accessories []string) string {
 	args := strings.Join(accessories, " ")
 	overrideArg := ""
 	if overrideFile != "" {
 		overrideArg = fmt.Sprintf("-f %s ", overrideFile)
 	}
+	envFile := envFilePath(app)
 	return fmt.Sprintf(
-		"cd '%s' && docker compose -p %s -f %s %sup -d %s",
-		workDir, project, composeFile, overrideArg, args)
+		"cd '%s' && touch '%s' && docker compose --env-file '%s' -p %s -f %s %sup -d %s",
+		workDir, envFile, envFile, project, composeFile, overrideArg, args)
 }
 
 // buildAccessoryExists reports (via shell exit 0/1) whether the accessory project
