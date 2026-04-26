@@ -43,6 +43,34 @@ func knownPresetList() string {
 	return strings.Join(names, ", ")
 }
 
+// resolvePresetImage queries ListImages and returns the lexicographically
+// newest active image whose name satisfies match. ConoHa rotates these
+// images periodically, so resolution at preset-apply time avoids stale
+// hardcoded IDs in the CLI binary.
+func resolvePresetImage(imageAPI *api.ImageAPI, match func(string) bool) (string, error) {
+	images, err := imageAPI.ListImages()
+	if err != nil {
+		return "", fmt.Errorf("listing images: %w", err)
+	}
+	var matched []string // names
+	idByName := make(map[string]string)
+	for _, img := range images {
+		if img.Status != "active" {
+			continue
+		}
+		if !match(img.Name) {
+			continue
+		}
+		matched = append(matched, img.Name)
+		idByName[img.Name] = img.ID
+	}
+	if len(matched) == 0 {
+		return "", fmt.Errorf("no image matched preset criteria (try `conoha image list` to see what is available)")
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(matched)))
+	return idByName[matched[0]], nil
+}
+
 // validatePresetSecurityGroups returns nil if every name in want exists in
 // the tenant's security-group list. On a missing entry it returns an error
 // listing the missing names plus the actual SG list, so the operator can

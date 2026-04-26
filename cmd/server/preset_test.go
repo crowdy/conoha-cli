@@ -140,3 +140,75 @@ func TestValidatePresetSecurityGroups_APIError(t *testing.T) {
 		t.Fatal("expected error from 500 response, got nil")
 	}
 }
+
+func TestResolvePresetImage_PicksLatest(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/v2/images") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"images": []map[string]any{
+				{"id": "img-old", "name": "vmi-docker-25.04-ubuntu-22.04-amd64", "status": "active"},
+				{"id": "img-new", "name": "vmi-docker-25.10-ubuntu-22.04-amd64", "status": "active"},
+				{"id": "img-other", "name": "vmi-docker-25.10-rocky-9-amd64", "status": "active"},
+				{"id": "img-deactivated", "name": "vmi-docker-26.04-ubuntu-24.04-amd64", "status": "deactivated"},
+			},
+		})
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	client := &api.Client{HTTP: ts.Client(), Token: "fake-token", TenantID: "tenant-1"}
+	imageAPI := api.NewImageAPI(client)
+
+	id, err := resolvePresetImage(imageAPI, matchDockerUbuntuAmd64)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "img-new" {
+		t.Errorf("resolved image = %q, want %q (newer name should win, deactivated should not)", id, "img-new")
+	}
+}
+
+func TestResolvePresetImage_NoMatch(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"images": []map[string]any{
+				{"id": "img-1", "name": "vmi-ubuntu-24.04-amd64", "status": "active"},
+				{"id": "img-2", "name": "vmi-docker-25.10-rocky-9-amd64", "status": "active"},
+			},
+		})
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	client := &api.Client{HTTP: ts.Client(), Token: "fake-token", TenantID: "tenant-1"}
+	imageAPI := api.NewImageAPI(client)
+
+	_, err := resolvePresetImage(imageAPI, matchDockerUbuntuAmd64)
+	if err == nil {
+		t.Fatal("expected error for no-match list, got nil")
+	}
+	if !strings.Contains(err.Error(), "no image") {
+		t.Errorf("error %q does not mention 'no image'", err.Error())
+	}
+}
+
+func TestResolvePresetImage_APIError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	client := &api.Client{HTTP: ts.Client(), Token: "fake-token", TenantID: "tenant-1"}
+	imageAPI := api.NewImageAPI(client)
+
+	_, err := resolvePresetImage(imageAPI, matchDockerUbuntuAmd64)
+	if err == nil {
+		t.Fatal("expected error from 500 response, got nil")
+	}
+}
