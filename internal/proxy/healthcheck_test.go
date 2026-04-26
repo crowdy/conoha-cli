@@ -20,7 +20,7 @@ type tick struct {
 
 type fakeExec struct {
 	ticks      []tick
-	idx        int  // advances on inspect calls (each call is "one tick")
+	idx        int // advances on inspect calls (each call is "one tick")
 	logs       string
 	sleepCount int
 }
