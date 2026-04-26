@@ -43,6 +43,7 @@ func init() {
 	createCmd.Flags().String("key-name", "", "SSH key name")
 	createCmd.Flags().String("admin-pass", "", "admin password")
 	createCmd.Flags().StringArray("security-group", nil, "security group name (repeatable)")
+	createCmd.Flags().String("for", "", "preset that fills in flavor, image, and security groups (e.g. \"proxy\")")
 	createCmd.Flags().String("user-data", "", "startup script file path")
 	createCmd.Flags().String("user-data-raw", "", "startup script string (inline)")
 	createCmd.Flags().String("user-data-url", "", "startup script URL (wrapped as #include)")
@@ -66,6 +67,25 @@ var createCmd = &cobra.Command{
 		flagVolumeID, _ := cmd.Flags().GetString("volume")
 		keyName, _ := cmd.Flags().GetString("key-name")
 		adminPass, _ := cmd.Flags().GetString("admin-pass")
+
+		forName, _ := cmd.Flags().GetString("for")
+		if forName != "" {
+			imageAPI := api.NewImageAPI(client)
+			networkAPI := api.NewNetworkAPI(client)
+			sgFromFlag, _ := cmd.Flags().GetStringArray("security-group")
+			var presetSGs []string
+			flavorID, imageID, presetSGs, err = resolvePreset(forName, flavorID, imageID, sgFromFlag, imageAPI, networkAPI)
+			if err != nil {
+				return err
+			}
+			// Push preset-resolved SGs back into the flag so the existing
+			// `cmd.Flags().GetStringArray("security-group")` call below sees them.
+			if len(sgFromFlag) == 0 && len(presetSGs) > 0 {
+				for _, n := range presetSGs {
+					_ = cmd.Flags().Set("security-group", n)
+				}
+			}
+		}
 
 		// Resolve user_data
 		userData, err := resolveUserData(cmd)

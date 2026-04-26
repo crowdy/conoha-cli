@@ -71,6 +71,46 @@ func resolvePresetImage(imageAPI *api.ImageAPI, match func(string) bool) (string
 	return idByName[matched[0]], nil
 }
 
+// resolvePreset returns flavor/image/sgNames after applying the named
+// preset. If forName is empty, inputs pass through unchanged (no API
+// calls). Explicit non-zero inputs always win over preset values; for
+// security groups, a non-empty user-supplied list REPLACES the preset's
+// list rather than appending to it (see spec § Override semantics).
+func resolvePreset(
+	forName string,
+	flavorIn, imageIn string,
+	sgIn []string,
+	imageAPI *api.ImageAPI,
+	networkAPI *api.NetworkAPI,
+) (flavor, image string, sgs []string, err error) {
+	flavor, image, sgs = flavorIn, imageIn, sgIn
+	if forName == "" {
+		return
+	}
+	spec, ok := presets[forName]
+	if !ok {
+		err = fmt.Errorf("unknown preset %q (known: %s)", forName, knownPresetList())
+		return
+	}
+	if flavor == "" {
+		flavor = spec.Flavor
+	}
+	if image == "" {
+		image, err = resolvePresetImage(imageAPI, spec.ImageMatch)
+		if err != nil {
+			return
+		}
+	}
+	if len(sgs) == 0 {
+		if vErr := validatePresetSecurityGroups(networkAPI, spec.SecurityGroups); vErr != nil {
+			err = vErr
+			return
+		}
+		sgs = spec.SecurityGroups
+	}
+	return
+}
+
 // validatePresetSecurityGroups returns nil if every name in want exists in
 // the tenant's security-group list. On a missing entry it returns an error
 // listing the missing names plus the actual SG list, so the operator can
