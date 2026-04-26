@@ -67,23 +67,15 @@ var createCmd = &cobra.Command{
 		flagVolumeID, _ := cmd.Flags().GetString("volume")
 		keyName, _ := cmd.Flags().GetString("key-name")
 		adminPass, _ := cmd.Flags().GetString("admin-pass")
+		sgNames, _ := cmd.Flags().GetStringArray("security-group")
 
 		forName, _ := cmd.Flags().GetString("for")
 		if forName != "" {
 			imageAPI := api.NewImageAPI(client)
 			networkAPI := api.NewNetworkAPI(client)
-			sgFromFlag, _ := cmd.Flags().GetStringArray("security-group")
-			var presetSGs []string
-			flavorID, imageID, presetSGs, err = resolvePreset(forName, flavorID, imageID, sgFromFlag, imageAPI, networkAPI)
+			flavorID, imageID, sgNames, err = resolvePreset(forName, flavorID, imageID, sgNames, imageAPI, networkAPI)
 			if err != nil {
 				return err
-			}
-			// Push preset-resolved SGs back into the flag so the existing
-			// `cmd.Flags().GetStringArray("security-group")` call below sees them.
-			if len(sgFromFlag) == 0 && len(presetSGs) > 0 {
-				for _, n := range presetSGs {
-					_ = cmd.Flags().Set("security-group", n)
-				}
 			}
 		}
 
@@ -141,7 +133,6 @@ var createCmd = &cobra.Command{
 		}
 
 		// Resolve security groups
-		sgNames, _ := cmd.Flags().GetStringArray("security-group")
 		if len(sgNames) == 0 {
 			// Interactive: let user select from available security groups
 			networkAPI := api.NewNetworkAPI(client)
