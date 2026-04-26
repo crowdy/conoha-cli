@@ -21,6 +21,11 @@ func TestBootScript_ContainsEssentials(t *testing.T) {
 		"ghcr.io/crowdy/conoha-proxy:latest",
 		"--acme-email=ops@example.com",
 		"--name conoha-proxy",
+		// #164: container runs as uid 65532 — without NET_BIND_SERVICE it
+		// can't bind :80/:443 on stock Ubuntu (default
+		// net.ipv4.ip_unprivileged_port_start=1024). DinD masks this with
+		// --privileged. Ship the cap on docker run so production matches.
+		"--cap-add=NET_BIND_SERVICE",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("BootScript missing %q:\n%s", want, s)
@@ -41,6 +46,9 @@ func TestRebootScript_PullsStopsRemovesStarts(t *testing.T) {
 		"docker rm conoha-proxy",
 		"--network host",
 		"--acme-email=ops@example.com",
+		// #164: same cap-add must be on the reboot path so an in-place
+		// upgrade doesn't silently regress a previously-working VPS.
+		"--cap-add=NET_BIND_SERVICE",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("RebootScript missing %q:\n%s", want, s)
