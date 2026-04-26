@@ -219,6 +219,29 @@ conoha server create --name my-server --user-data-url https://example.com/setup.
 
 `deploy --slot <id>` で slot ID を固定できます (規則: `[a-z0-9][a-z0-9-]{0,63}`、既定は git short SHA または timestamp)。同名 slot を明示的に再利用すると作業ディレクトリを削除してから再展開します。`--slot` を省略した場合、既定値が既存の compose プロジェクトと衝突したら CLI が自動で `-2` / `-3` と suffix を付けて衝突を回避するので、drain 中のスロットを破壊的に上書きすることはありません。
 
+#### multi-host / expose ブロック (v0.3.0+)
+
+Dex / admin UI / webhook 受信など **ルートと別ホスト名** で外部公開したいサブドメインは `expose:` ブロックで宣言できます。各ブロックは独立した proxy service (`<name>-<label>`) として登録され、`blue_green: true` なら root web と同じ slot 回転に載ります。
+
+```yaml
+name: gitea
+hosts: [gitea.example.com]
+web:
+  service: gitea
+  port: 3000
+expose:
+  - label: dex                    # proxy service name サフィックス (<name>-<label>)
+    host: dex.example.com         # hosts[] 重複不可 / 他 expose とも重複不可
+    service: dex                  # compose service 名 (accessories / web.service と排他)
+    port: 5556
+    blue_green: false             # true (既定) なら slot 回転対象、false はアクセサリ扱い (単発起動)
+accessories: [db]
+```
+
+- `app status <server>` はルートと各 expose ブロックを 1 表にまとめ、`--format json` で `{root, expose: [{label, service}]}` を返します。
+- `app rollback <server>` は既定でルート → expose 逆順 の順に全ブロックをロールバックします。`--target=<label>` (または `--target=web`) で個別指定も可能。drain 窓が閉じているブロックは警告のみでスキップされ、残りのブロックは継続して処理されます。
+- 旧 CLI (< v0.3.0) は `expose:` を silently 無視します。multi-host を使う場合は README / CI で CLI の最低バージョンを v0.3.0 以上に固定してください。
+
 ### no-proxy モード: フラット単一スロット
 
 `conoha.yml` / proxy / DNS が不要な最短経路。`docker-compose.yml` だけあれば動きます。`docker compose up -d --build` をリモートで叩くのと等価なので、TLS / Host ベースルーティングが必要ないケース (テスト、社内ツール、非 HTTP サービス、ホビー用途) に向きます。
