@@ -37,20 +37,27 @@ end-to-end (recommended), or run the steps below by hand.
    `bin/conoha dns record add <zone> <host> A <vps-ip>` and wait until
    `dig +short <host>.<zone>` returns the IP (1–5 min).
 3. **Boot the proxy.** `bin/conoha proxy boot --acme-email you@example.com <server>`
-   → confirm stdout contains `Waiting for proxy to become healthy` (the
-   #177 healthy-gate; if absent, the CLI predates v0.7.0 and is not the
-   binary you intend to release) and `Boot complete.` follows.
+   → confirm **stderr** contains `==> Waiting for proxy to become healthy`
+   (the #177 healthy-gate; if absent, the CLI predates v0.7.0 and is not
+   the binary you intend to release) followed by `Boot complete.` Both
+   lines are written to stderr — capture with `2>&1` if you want them in
+   a single log.
 4. **Init + deploy a fixture app** (reuse `tests/e2e/fixtures/` or a real
    project with a real `Host:`). `bin/conoha app init <server>` then
    `bin/conoha app deploy <server>`.
 5. **Hit the site over HTTPS in a browser.** Expect HTTP 200 and a valid
-   Let's Encrypt **production** certificate (issuer `R3` / `R10` / `E1`–`E8`;
-   `staging.letsencrypt.org` indicates the proxy is in staging mode).
+   Let's Encrypt **production** certificate (issuer `R10`–`R14` for RSA
+   chains or `E5`–`E8` for ECDSA — the LE prod intermediates rotate, so
+   any current production issuer is fine). An issuer containing
+   `staging.letsencrypt.org` (e.g. `(STAGING) Counterfeit Cas E1`)
+   indicates the proxy is in staging mode and the row fails.
 6. **Tear down.** `bin/conoha app destroy --yes <server>`,
    `bin/conoha proxy remove --purge <server>`, then
-   `bin/conoha server delete --yes --delete-boot-volume --wait <server>`
-   (boot-volume cleanup is automatic per #88) and the DNS record if step 2
-   was used.
+   `bin/conoha server delete --yes --delete-boot-volume --wait <server>`.
+   `--delete-boot-volume` is the **opt-in** flag added in #88 — without
+   it the boot volume is retained after the server is gone and will
+   block future server creation with the same name on quota-tight
+   tenants. Then remove the DNS record if step 2 was used.
 
 If any step fails, do **not** tag. File the bug against the RC commit and
 iterate on an `rcN+1` tag.
@@ -69,7 +76,7 @@ The **Coverage** column says where the check lives:
 
 | # | Bug class | What to run | Pass condition | Coverage | Done? |
 |---|-----------|-------------|----------------|----------|-------|
-| 1 | **cloud-init timing** | `bin/conoha server create …` immediately followed by `bin/conoha proxy boot <server>` (no manual sleep). | `proxy boot` waits for cloud-init to complete before SSH-ing, then succeeds on first try. No `Connection refused`/`timeout` errors surface to the user. The healthy-gate (#177) reports `Waiting for proxy to become healthy` before `Boot complete.` | recipe (steps 3, 5) + CLI guard (#177) | `[ ]` |
+| 1 | **cloud-init timing** | `bin/conoha server create …` immediately followed by `bin/conoha proxy boot <server>` (no manual sleep). | `proxy boot` waits for cloud-init to complete before SSH-ing, then succeeds on first try. No `Connection refused`/`timeout` errors surface to the user. The healthy-gate (#177) prints `==> Waiting for proxy to become healthy` followed by `Boot complete.` to **stderr** (use `2>&1` when piping to a file). | recipe (steps 3, 5) + CLI guard (#177) | `[ ]` |
 | 2 | **systemd unit race** | `ssh <server> 'systemctl status docker conoha-proxy'` after step 1.3. Confirm UFW (`ufw status verbose`) allows 80/443 and `/etc/sysctl.d/99-conoha-proxy.conf` exists. | Both units `active (running)`. `journalctl -u conoha-proxy` shows no `failed to connect to docker.sock` retries. UFW allows 80,443/tcp; sysctl `net.ipv4.ip_unprivileged_port_start=0` set. (#173/#174 apply both at boot.) | recipe (step 5) + CLI guard (#173/#174) | `[ ]` |
 | 3 | **SSH known_hosts TOFU (#101)** | Connect from a fresh workstation (empty `~/.ssh/known_hosts`). Run `bin/conoha app status <server>` twice; between runs, `ssh-keygen -R <vps-ip>` to simulate a rebuild. | First run prompts for TOFU (or auto-accepts with `CONOHA_SSH_INSECURE=1`); second run (post-remove) re-prompts rather than silently pinning an old fingerprint. | hand-only — recipe uses `--insecure`, which masks TOFU semantics by design. | `[ ]` |
 | 4 | **ACME rate-limit degradation** | Trigger `app deploy` against a domain already past the LE weekly quota (reuse a known-throttled zone, or skip with reason). | CLI output ends with `TLS pending — degraded` rather than a plain-looking success. Proxy keeps serving HTTP. | hand-only — recipe uses sslip.io to *avoid* quota; the throttled-quota path needs a separate setup. | `[ ]` |
