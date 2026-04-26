@@ -61,11 +61,18 @@ func TestResolveAppName_FlagWins(t *testing.T) {
 // errored with "validation error on App name: input required but --no-input
 // is set" even from inside the project dir, while init/deploy/rollback
 // happily read the same file.
+//
+// CONOHA_NO_INPUT=1 is set deliberately: the pre-fix code would fall through
+// to prompt.String("App name"), which under --no-input returns the standard
+// ValidationError. So this exact assertion (no error, name == "from-yaml")
+// would have FAILED on the buggy code — making this a real regression
+// guard, not a tautology.
 func TestResolveAppName_FallsBackToProjectFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("conoha.yml", []byte("name: from-yaml\nhosts:\n  - example.local\nweb:\n  service: web\n  port: 80\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("CONOHA_NO_INPUT", "1")
 	got, err := resolveAppName(newAppCmdForTest())
 	if err != nil {
 		t.Fatalf("resolveAppName: %v", err)
@@ -89,13 +96,20 @@ func TestResolveAppName_NoFileNoInputErrors(t *testing.T) {
 	}
 }
 
+// A conoha.yml that parses but fails Validate() for a NON-name reason
+// (here: missing hosts) must still fall through to prompt — we don't want
+// to smuggle in pf.Name when the rest of the project is malformed and a
+// later code path would error with a vaguer message. Picking a non-name
+// validation failure (rather than name: "") is what makes this a real
+// guard for the Validate()-required gate: the pre-fix code went to the
+// prompt unconditionally regardless of pf state, so the only way to
+// distinguish working-as-intended fallthrough from accidental fallthrough
+// is to show that a *valid name* still doesn't leak through when the
+// project as a whole isn't valid.
 func TestResolveAppName_InvalidProjectFileFallsThroughToPrompt(t *testing.T) {
-	// A conoha.yml that fails Validate() must NOT silently override; we'd
-	// rather surface the prompt's --no-input error than smuggle in an empty
-	// or malformed name.
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.WriteFile(filepath.Join(dir, "conoha.yml"), []byte("name: \"\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "conoha.yml"), []byte("name: looks-valid\nweb:\n  service: web\n  port: 80\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CONOHA_NO_INPUT", "1")
@@ -104,6 +118,6 @@ func TestResolveAppName_InvalidProjectFileFallsThroughToPrompt(t *testing.T) {
 		t.Fatal("want error when project file is invalid + --no-input")
 	}
 	if !strings.Contains(err.Error(), "input required") {
-		t.Errorf("expected fallthrough to prompt; got: %v", err)
+		t.Errorf("expected fallthrough to prompt (no project leaked through); got: %v", err)
 	}
 }

@@ -116,15 +116,23 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 // resolveAppName picks the app name from --app-name when set, otherwise from
 // conoha.yml in cwd, otherwise via prompt. The cwd fallback matches what
 // init/deploy/rollback already do via LoadProjectFile and keeps the `app …`
-// family consistent — without it, status/destroy/logs/env/reset all surface a
-// confusing "validation error on App name: input required but --no-input is
-// set" when run from a project dir under --no-input.
+// family consistent — without it, every command that funnels through
+// connectToApp surfaces a confusing "validation error on App name: input
+// required but --no-input is set" when run from a project dir under
+// --no-input.
+//
+// Validate() is required (not just LoadProjectFile error-free): if the YAML
+// parses but the project is malformed (missing hosts, invalid name shape,
+// etc.) we'd rather surface the prompt's --no-input error than smuggle in a
+// half-valid name and let a later code path fail with a vaguer message.
 func resolveAppName(cmd *cobra.Command) (string, error) {
 	if name, _ := cmd.Flags().GetString("app-name"); name != "" {
 		return name, nil
 	}
 	if pf, err := config.LoadProjectFile(config.ProjectFileName); err == nil {
-		if vErr := pf.Validate(); vErr == nil && pf.Name != "" {
+		// Validate() guarantees Name is non-empty and DNS-1123 valid on
+		// success — no extra Name != "" check needed.
+		if pf.Validate() == nil {
 			return pf.Name, nil
 		}
 	}
