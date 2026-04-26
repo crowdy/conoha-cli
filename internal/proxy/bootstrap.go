@@ -38,7 +38,10 @@ echo "==> Starting %[4]s from %[2]s"
 # --cap-add=NET_BIND_SERVICE: image runs as uid 65532, so binding :80/:443
 # on the host network requires this cap. Without it, stock Ubuntu's
 # net.ipv4.ip_unprivileged_port_start=1024 default makes the proxy crash-loop
-# at boot (#164). DinD's --privileged masks this in CI.
+# at boot (#164). DinD's --privileged masks this in CI. Note: --network host
+# does NOT bypass the bind capability check — the bind syscall still goes
+# through inet_csk_get_port → ns_capable regardless of which netns the
+# container shares — so the cap is independently required.
 docker run -d --name %[4]s \
   --restart unless-stopped \
   --network host \
