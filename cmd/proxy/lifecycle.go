@@ -2,7 +2,9 @@ package proxy
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -57,6 +59,16 @@ var rebootCmd = &cobra.Command{
 		}
 		if code != 0 {
 			return fmt.Errorf("reboot script exited with %d", code)
+		}
+		// Same healthy-gate as boot (#175): a reboot's docker run inherits
+		// every gotcha that boot does, so the same check applies.
+		waitTimeout, _ := cmd.Flags().GetDuration("wait-timeout")
+		if waitTimeout > 0 {
+			fmt.Fprintf(os.Stderr, "==> Waiting for proxy to become healthy (up to %s)\n", waitTimeout)
+			exec := &proxypkg.SSHExecutor{Client: ctx.Client, Stderr: io.Discard}
+			if hcErr := proxypkg.WaitForHealthy(exec, container, dataDir, waitTimeout, nil, proxypkg.HealthcheckOptions{}); hcErr != nil {
+				return hcErr
+			}
 		}
 		return nil
 	},
@@ -120,6 +132,7 @@ func init() {
 	rebootCmd.Flags().String("image", DefaultImage, "conoha-proxy docker image")
 	rebootCmd.Flags().String("data-dir", DefaultDataDir, "host data directory")
 	rebootCmd.Flags().String("container", DefaultContainer, "docker container name")
+	rebootCmd.Flags().Duration("wait-timeout", 30*time.Second, "max wait for container to report healthy (0 disables the check)")
 
 	for _, c := range []*cobra.Command{startCmd, stopCmd, restartCmd} {
 		addSSHFlags(c)

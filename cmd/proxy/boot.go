@@ -2,7 +2,9 @@ package proxy
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -40,6 +42,23 @@ var bootCmd = &cobra.Command{
 		if code != 0 {
 			return fmt.Errorf("boot script exited with %d", code)
 		}
+
+		// #175: confirm the container actually came up healthy. `docker run -d`
+		// returns 0 the instant containerd creates the container, well before
+		// the entrypoint has bound any ports — a crash loop is indistinguishable
+		// from a healthy container at this stage. Polling here means same-class
+		// regressions (file caps, sysctl drift, image entrypoint changes) fail
+		// loudly on first run rather than only during a manual log read.
+		waitTimeout, _ := cmd.Flags().GetDuration("wait-timeout")
+		if waitTimeout > 0 {
+			fmt.Fprintf(os.Stderr, "==> Waiting for proxy to become healthy (up to %s)\n", waitTimeout)
+			// Discard remote stderr noise from the polling curls; healthcheck
+			// errors are already aggregated and surfaced by WaitForHealthy.
+			exec := &proxypkg.SSHExecutor{Client: ctx.Client, Stderr: io.Discard}
+			if hcErr := proxypkg.WaitForHealthy(exec, container, dataDir, waitTimeout, nil, proxypkg.HealthcheckOptions{}); hcErr != nil {
+				return hcErr
+			}
+		}
 		fmt.Fprintln(os.Stderr, "Boot complete.")
 		return nil
 	},
@@ -51,5 +70,6 @@ func init() {
 	bootCmd.Flags().String("image", DefaultImage, "conoha-proxy docker image")
 	bootCmd.Flags().String("data-dir", DefaultDataDir, "host data directory")
 	bootCmd.Flags().String("container", DefaultContainer, "docker container name")
+	bootCmd.Flags().Duration("wait-timeout", 30*time.Second, "max wait for container to report healthy (0 disables the check)")
 	Cmd.AddCommand(bootCmd)
 }
