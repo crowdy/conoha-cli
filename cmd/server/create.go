@@ -43,6 +43,7 @@ func init() {
 	createCmd.Flags().String("key-name", "", "SSH key name")
 	createCmd.Flags().String("admin-pass", "", "admin password")
 	createCmd.Flags().StringArray("security-group", nil, "security group name (repeatable)")
+	createCmd.Flags().String("for", "", "preset that fills in flavor, image, and security groups (e.g. \"proxy\")")
 	createCmd.Flags().String("user-data", "", "startup script file path")
 	createCmd.Flags().String("user-data-raw", "", "startup script string (inline)")
 	createCmd.Flags().String("user-data-url", "", "startup script URL (wrapped as #include)")
@@ -66,6 +67,17 @@ var createCmd = &cobra.Command{
 		flagVolumeID, _ := cmd.Flags().GetString("volume")
 		keyName, _ := cmd.Flags().GetString("key-name")
 		adminPass, _ := cmd.Flags().GetString("admin-pass")
+		sgNames, _ := cmd.Flags().GetStringArray("security-group")
+
+		forName, _ := cmd.Flags().GetString("for")
+		if forName != "" {
+			imageAPI := api.NewImageAPI(client)
+			networkAPI := api.NewNetworkAPI(client)
+			flavorID, imageID, sgNames, err = resolvePreset(forName, flavorID, imageID, sgNames, imageAPI, networkAPI)
+			if err != nil {
+				return err
+			}
+		}
 
 		// Resolve user_data
 		userData, err := resolveUserData(cmd)
@@ -121,7 +133,6 @@ var createCmd = &cobra.Command{
 		}
 
 		// Resolve security groups
-		sgNames, _ := cmd.Flags().GetStringArray("security-group")
 		if len(sgNames) == 0 {
 			// Interactive: let user select from available security groups
 			networkAPI := api.NewNetworkAPI(client)

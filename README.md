@@ -141,6 +141,18 @@ conoha server create --name my-server \
   --admin-pass 'P@ssw0rd'
 ```
 
+### プリセット (`--for`)
+
+`--for <preset>` で flavor / image / security-group をまとめて埋められます。明示フラグは常に優先されます。現状は `proxy` プリセットのみ提供：
+
+```bash
+conoha server create --no-input --yes --wait \
+  --name myproxy --key-name my-key --for proxy
+# = --flavor g2l-t-c3m2
+#   --image  最新 vmi-docker-*-ubuntu-*-amd64
+#   --security-group default,IPv4v6-SSH,IPv4v6-Web,IPv4v6-ICMP
+```
+
 ### スタートアップスクリプト
 
 サーバー作成時に初期設定スクリプトを指定できます：
