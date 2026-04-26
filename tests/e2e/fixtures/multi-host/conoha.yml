@@ -1,0 +1,19 @@
+name: e2e-multihost
+hosts:
+  - e2e.local
+web:
+  service: web
+  port: 80
+expose:
+  - label: api
+    host: api.e2e.local
+    service: api
+    port: 8080
+health:
+  # Proxy default /up returns 404 from stock nginx; / returns 200 on the
+  # default welcome page (web) and via our inline server config (api).
+  path: /
+deploy:
+  # Reuse the e2e-app's tight drain so the multi-host scenario stays
+  # within the harness wall-clock budget (issue #154 acceptance).
+  drain_ms: 5000
