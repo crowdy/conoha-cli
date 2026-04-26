@@ -71,6 +71,56 @@ func (f *fakeStatusClient) Get(name string) (*proxypkg.Service, error) {
 	return nil, errors.New("fakeStatusClient: unknown service " + name)
 }
 
+// Regression for #176: when conoha.yml is absent or invalid, status must
+// degrade gracefully — query the root by name, return empty (non-nil)
+// expose slice. Before this, status bailed in JSON mode with
+// `load conoha.yml: ... no such file or directory`, which was useless for
+// monitoring scripts running outside the project dir.
+func TestCollectRootOnlyStatus_HappyPath(t *testing.T) {
+	admin := &fakeStatusClient{
+		services: map[string]*proxypkg.Service{
+			"myapp": {Name: "myapp", Phase: proxypkg.PhaseLive},
+		},
+	}
+	r, err := collectRootOnlyStatus(admin, "myapp")
+	if err != nil {
+		t.Fatalf("collectRootOnlyStatus: %v", err)
+	}
+	if r.Root == nil || r.Root.Name != "myapp" {
+		t.Fatalf("root = %+v, want service myapp", r.Root)
+	}
+	if r.Expose == nil {
+		t.Fatal("Expose should be non-nil empty slice — JSON consumers expect [] not null")
+	}
+	if len(r.Expose) != 0 {
+		t.Errorf("Expose = %+v, want empty", r.Expose)
+	}
+	// Verify the JSON shape — `expose: []` not `expose: null`. Stable
+	// contract for parsers that may have started checking this field.
+	buf := &bytes.Buffer{}
+	if err := renderStatusJSON(buf, r); err != nil {
+		t.Fatalf("renderStatusJSON: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"expose": []`) {
+		t.Errorf("JSON missing `\"expose\": []`:\n%s", buf.String())
+	}
+}
+
+func TestCollectRootOnlyStatus_RootMissing(t *testing.T) {
+	// Proxy doesn't know this app at all. Surface that so JSON consumers
+	// can treat it as "service not registered" rather than empty success.
+	admin := &fakeStatusClient{
+		errs: map[string]error{"myapp": errors.New("not found")},
+	}
+	_, err := collectRootOnlyStatus(admin, "myapp")
+	if err == nil {
+		t.Fatal("want error when root not found, got nil")
+	}
+	if !strings.Contains(err.Error(), "myapp") {
+		t.Errorf("error should name the app; got: %v", err)
+	}
+}
+
 func TestCollectAppStatus_RootOnly(t *testing.T) {
 	pf := &config.ProjectFile{Name: "myapp"}
 	admin := &fakeStatusClient{
