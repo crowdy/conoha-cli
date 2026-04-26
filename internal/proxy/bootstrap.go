@@ -31,13 +31,18 @@ if docker inspect %[4]s >/dev/null 2>&1; then
 fi
 
 echo "==> Starting %[4]s from %[2]s"
-# --network host is required: CLI's app deploy probes slots at
-# http://127.0.0.1:<slot-port>, which only resolves to the slot when the
-# proxy shares the host loopback. Bridge-networked containers would see
-# their own loopback and the probe would fail (spec 2026-04-20 §5 step 10).
+# --network host: CLI's app deploy probes slots at http://127.0.0.1:<slot-port>,
+# which only resolves to the slot when the proxy shares the host loopback.
+# Bridge-networked containers would see their own loopback and the probe
+# would fail (spec 2026-04-20 §5 step 10).
+# --cap-add=NET_BIND_SERVICE: image runs as uid 65532, so binding :80/:443
+# on the host network requires this cap. Without it, stock Ubuntu's
+# net.ipv4.ip_unprivileged_port_start=1024 default makes the proxy crash-loop
+# at boot (#164). DinD's --privileged masks this in CI.
 docker run -d --name %[4]s \
   --restart unless-stopped \
   --network host \
+  --cap-add=NET_BIND_SERVICE \
   -v %[3]s:%[3]s \
   %[2]s \
   run --acme-email=%[1]s
@@ -61,10 +66,13 @@ if docker inspect %[4]s >/dev/null 2>&1; then
 fi
 
 echo "==> Starting new %[4]s from %[2]s"
-# See BootScript for why --network host is required.
+# See BootScript for why --network host and --cap-add=NET_BIND_SERVICE are
+# required. The cap-add must be carried on the reboot path too — an
+# in-place upgrade that drops it would silently regress a working VPS.
 docker run -d --name %[4]s \
   --restart unless-stopped \
   --network host \
+  --cap-add=NET_BIND_SERVICE \
   -v %[3]s:%[3]s \
   %[2]s \
   run --acme-email=%[1]s
