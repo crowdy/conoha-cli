@@ -22,6 +22,14 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+release:
+  # `auto` detects pre-release from the tag suffix (-rc, -alpha, -beta, -pre)
+  # and marks the GitHub release as pre-release. Combined with the
+  # `skip_upload: auto` settings on brews/scoops below, this gives us the
+  # release-checklist's "RC → soak → final" workflow without polluting the
+  # public Homebrew/Scoop channels with release-candidate builds.
+  prerelease: auto
+
 brews:
   - repository:
       owner: crowdy
@@ -31,6 +39,9 @@ brews:
     homepage: "https://crowdy.github.io/conoha-cli-pages/"
     description: "CLI tool for ConoHa VPS3 API"
     license: "Apache-2.0"
+    # Skip the Homebrew tap update for pre-release tags (RC/alpha/beta).
+    # Final tags continue to publish normally.
+    skip_upload: auto
 
 scoops:
   - repository:
@@ -41,6 +52,8 @@ scoops:
     homepage: "https://crowdy.github.io/conoha-cli-pages/"
     description: "CLI tool for ConoHa VPS3 API"
     license: "Apache-2.0"
+    # Skip the Scoop bucket update for pre-release tags. Same rationale as brews.
+    skip_upload: auto
 
 changelog:
   sort: asc
