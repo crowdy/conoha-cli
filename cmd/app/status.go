@@ -96,24 +96,49 @@ var statusCmd = &cobra.Command{
 			return nil
 		}
 
-		pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
-		if pfErr != nil || pf.Validate() != nil {
-			// JSON consumers need a deterministic failure; table consumers
-			// have already seen compose ps and can live without proxy detail.
-			if format == "json" {
-				if pfErr == nil {
-					pfErr = pf.Validate()
-				}
-				return fmt.Errorf("load conoha.yml: %w", pfErr)
-			}
-			return nil
-		}
-
 		dataDir, _ := cmd.Flags().GetString("data-dir")
 		if dataDir == "" {
 			dataDir = proxy.DefaultDataDir
 		}
 		admin := proxypkg.NewClient(&proxypkg.SSHExecutor{Client: ctx.Client}, proxy.SocketPath(dataDir))
+
+		// #176: status used to bail in JSON mode when conoha.yml was missing
+		// or invalid in cwd, even though the proxy admin API can answer
+		// {root, expose:[]} on its own. Project file is only required to
+		// enumerate the expose-block list (we need the labels to build the
+		// `<name>-<label>` service names). When it's absent we degrade to
+		// root-only and warn on stderr — useful for monitoring scripts and
+		// recovery on a workstation without the source tree.
+		//
+		// Distinguish "missing" (benign — the documented use case) from
+		// "invalid" (a real bug worth surfacing): an invalid conoha.yml
+		// in cwd is a typo or schema drift the user almost certainly
+		// wants to know about, not silently skip.
+		pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
+		var degraded bool
+		if pfErr != nil {
+			fmt.Fprintln(os.Stderr, "warning: no conoha.yml in cwd; enumerating root proxy service only")
+			degraded = true
+		} else if vErr := pf.Validate(); vErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: conoha.yml in cwd is invalid (%v); enumerating root proxy service only\n", vErr)
+			degraded = true
+		}
+		if degraded {
+			report, rootErr := collectRootOnlyStatus(admin, ctx.AppName)
+			if rootErr != nil {
+				if format == "json" {
+					return rootErr
+				}
+				fmt.Fprintf(os.Stderr, "\n==> Proxy service %q: (error: %v)\n", ctx.AppName, rootErr)
+				return nil
+			}
+			if format == "json" {
+				return renderStatusJSON(os.Stdout, report)
+			}
+			_, _ = fmt.Fprintln(os.Stdout)
+			_, _ = fmt.Fprintln(os.Stdout, "==> Proxy services")
+			return renderStatusTable(os.Stdout, report)
+		}
 
 		report, err := collectAppStatus(admin, pf, os.Stderr)
 		if err != nil {
@@ -133,6 +158,17 @@ var statusCmd = &cobra.Command{
 	},
 }
 
+// collectRootOnlyStatus returns a status report containing just the root
+// service. Used when conoha.yml isn't available (#176). expose is an empty
+// (non-nil) slice so JSON consumers see `"expose": []` rather than null.
+func collectRootOnlyStatus(admin statusClient, name string) (*appStatusReport, error) {
+	root, err := admin.Get(name)
+	if err != nil {
+		return nil, fmt.Errorf("proxy get %q: %w", name, err)
+	}
+	return &appStatusReport{Root: root, Expose: []exposeStatusEntry{}}, nil
+}
+
 // collectAppStatus fetches root + per-expose proxy services. A Get failure on
 // the root service is fatal (it's the primary target). A Get failure on any
 // expose service is logged as a warning and recorded as a nil Service entry
@@ -142,7 +178,11 @@ func collectAppStatus(admin statusClient, pf *config.ProjectFile, warn io.Writer
 	if err != nil {
 		return nil, fmt.Errorf("proxy get %q: %w", pf.Name, err)
 	}
-	r := &appStatusReport{Root: root}
+	// Initialize Expose as a non-nil empty slice so the JSON shape stays
+	// `"expose": []` for projects with zero expose blocks. Matches what
+	// collectRootOnlyStatus emits — keeps consumers from having to special-
+	// case `null` vs `[]`.
+	r := &appStatusReport{Root: root, Expose: []exposeStatusEntry{}}
 	for i := range pf.Expose {
 		b := &pf.Expose[i]
 		name := exposeServiceName(pf.Name, b.Label)
