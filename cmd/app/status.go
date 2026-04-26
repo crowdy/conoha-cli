@@ -109,9 +109,21 @@ var statusCmd = &cobra.Command{
 		// `<name>-<label>` service names). When it's absent we degrade to
 		// root-only and warn on stderr — useful for monitoring scripts and
 		// recovery on a workstation without the source tree.
+		//
+		// Distinguish "missing" (benign — the documented use case) from
+		// "invalid" (a real bug worth surfacing): an invalid conoha.yml
+		// in cwd is a typo or schema drift the user almost certainly
+		// wants to know about, not silently skip.
 		pf, pfErr := config.LoadProjectFile(config.ProjectFileName)
-		if pfErr != nil || pf.Validate() != nil {
-			fmt.Fprintln(os.Stderr, "warning: no valid conoha.yml in cwd; expose blocks will not be enumerated (root service only)")
+		var degraded bool
+		if pfErr != nil {
+			fmt.Fprintln(os.Stderr, "warning: no conoha.yml in cwd; enumerating root proxy service only")
+			degraded = true
+		} else if vErr := pf.Validate(); vErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: conoha.yml in cwd is invalid (%v); enumerating root proxy service only\n", vErr)
+			degraded = true
+		}
+		if degraded {
 			report, rootErr := collectRootOnlyStatus(admin, ctx.AppName)
 			if rootErr != nil {
 				if format == "json" {
@@ -166,7 +178,11 @@ func collectAppStatus(admin statusClient, pf *config.ProjectFile, warn io.Writer
 	if err != nil {
 		return nil, fmt.Errorf("proxy get %q: %w", pf.Name, err)
 	}
-	r := &appStatusReport{Root: root}
+	// Initialize Expose as a non-nil empty slice so the JSON shape stays
+	// `"expose": []` for projects with zero expose blocks. Matches what
+	// collectRootOnlyStatus emits — keeps consumers from having to special-
+	// case `null` vs `[]`.
+	r := &appStatusReport{Root: root, Expose: []exposeStatusEntry{}}
 	for i := range pf.Expose {
 		b := &pf.Expose[i]
 		name := exposeServiceName(pf.Name, b.Label)

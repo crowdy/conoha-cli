@@ -138,6 +138,21 @@ func TestCollectAppStatus_RootOnly(t *testing.T) {
 	if len(r.Expose) != 0 {
 		t.Errorf("Expose = %+v, want empty", r.Expose)
 	}
+	// JSON shape parity with collectRootOnlyStatus (#176): zero-expose
+	// projects must serialize as `"expose": []`, not `null`. Guards
+	// against a future "drop the empty-slice init" refactor that would
+	// silently make this path emit null and break consumers that started
+	// trusting `[]`.
+	if r.Expose == nil {
+		t.Error("Expose should be non-nil empty slice for JSON shape stability")
+	}
+	buf := &bytes.Buffer{}
+	if err := renderStatusJSON(buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `"expose": []`) {
+		t.Errorf("expected `\"expose\": []` in JSON; got:\n%s", buf.String())
+	}
 	if got := admin.calls; len(got) != 1 || got[0] != "myapp" {
 		t.Errorf("calls = %v, want [myapp]", got)
 	}
