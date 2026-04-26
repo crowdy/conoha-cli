@@ -102,7 +102,7 @@ func resolvePreset(
 		}
 	}
 	if len(sgs) == 0 {
-		if vErr := validatePresetSecurityGroups(networkAPI, spec.SecurityGroups); vErr != nil {
+		if vErr := validateSecurityGroupNames(networkAPI, spec.SecurityGroups); vErr != nil {
 			err = vErr
 			return
 		}
@@ -111,11 +111,14 @@ func resolvePreset(
 	return
 }
 
-// validatePresetSecurityGroups returns nil if every name in want exists in
+// validateSecurityGroupNames returns nil if every name in want exists in
 // the tenant's security-group list. On a missing entry it returns an error
 // listing the missing names plus the actual SG list, so the operator can
 // self-diagnose without rerunning `conoha server list-sg`.
-func validatePresetSecurityGroups(networkAPI *api.NetworkAPI, want []string) error {
+//
+// Used by both the preset path (preset.SecurityGroups) and the explicit
+// --security-group flag path on `server create` (#186).
+func validateSecurityGroupNames(networkAPI *api.NetworkAPI, want []string) error {
 	sgs, err := networkAPI.ListSecurityGroups()
 	if err != nil {
 		return fmt.Errorf("listing security groups: %w", err)
@@ -139,6 +142,6 @@ func validatePresetSecurityGroups(networkAPI *api.NetworkAPI, want []string) err
 		return nil
 	}
 	sort.Strings(names)
-	return fmt.Errorf("preset security groups not found: %s (available: %s)",
+	return fmt.Errorf("security groups not found: %s (available: %s)",
 		strings.Join(missing, ", "), strings.Join(names, ", "))
 }

@@ -69,6 +69,16 @@ var createCmd = &cobra.Command{
 		adminPass, _ := cmd.Flags().GetString("admin-pass")
 		sgNames, _ := cmd.Flags().GetStringArray("security-group")
 
+		// Pre-flight: validate explicit --security-group names exist in tenant (#186).
+		// Skipped when sgNames is empty: the preset path validates inside resolvePreset,
+		// and the interactive path picks from the API list (already valid).
+		if len(sgNames) > 0 {
+			networkAPI := api.NewNetworkAPI(client)
+			if err := validateSecurityGroupNames(networkAPI, sgNames); err != nil {
+				return err
+			}
+		}
+
 		forName, _ := cmd.Flags().GetString("for")
 		if forName != "" {
 			imageAPI := api.NewImageAPI(client)
