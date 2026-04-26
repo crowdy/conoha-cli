@@ -25,6 +25,30 @@ echo "==> Preparing data directory %[3]s"
 mkdir -p %[3]s
 chown 65532:65532 %[3]s
 
+# #164: the proxy container runs as uid 65532 with --network host. Ubuntu's
+# default net.ipv4.ip_unprivileged_port_start=1024 plus the bind()-time
+# capability check means the proxy can't bind :80/:443 — it crash-loops
+# with "permission denied" before admin.sock is created.
+#
+# --cap-add=NET_BIND_SERVICE alone doesn't help: the cap lands in the
+# bounding/permitted set, but a non-root process needs it in the EFFECTIVE
+# set, which requires either file capabilities on the binary or ambient
+# caps. Neither is in this image.
+#
+# Per-container '--sysctl net.ipv4.ip_unprivileged_port_start=0' is also
+# rejected because we use --network host (host-namespace sysctls aren't
+# container-namespaced; runc errors with "not allowed in host network
+# namespace").
+#
+# So set the sysctl at HOST level. Persistent via /etc/sysctl.d so it
+# survives reboots; 'sysctl --system' applies immediately. Blast radius:
+# any unprivileged user on this VPS can bind ports 80-1023, but this VPS
+# is dedicated to the proxy. DinD masks the original bug with
+# --privileged.
+mkdir -p /etc/sysctl.d
+echo 'net.ipv4.ip_unprivileged_port_start=0' > /etc/sysctl.d/99-conoha-proxy.conf
+sysctl --system >/dev/null
+
 # #165: stock Ubuntu cloud images run UFW with policy DROP and only SSH
 # allowed, so external traffic to :80/:443 — including LE HTTP-01 challenge
 # from the ACME servers — is silently dropped after 'proxy boot'. Open the
@@ -54,18 +78,11 @@ echo "==> Starting %[4]s from %[2]s"
 # --network host: CLI's app deploy probes slots at http://127.0.0.1:<slot-port>,
 # which only resolves to the slot when the proxy shares the host loopback.
 # Bridge-networked containers would see their own loopback and the probe
-# would fail (spec 2026-04-20 §5 step 10).
-# --cap-add=NET_BIND_SERVICE: image runs as uid 65532, so binding :80/:443
-# on the host network requires this cap. Without it, stock Ubuntu's
-# net.ipv4.ip_unprivileged_port_start=1024 default makes the proxy crash-loop
-# at boot (#164). DinD's --privileged masks this in CI. Note: --network host
-# does NOT bypass the bind capability check — the bind syscall still goes
-# through inet_csk_get_port → ns_capable regardless of which netns the
-# container shares — so the cap is independently required.
+# would fail (spec 2026-04-20 §5 step 10). The :80/:443 bind permission
+# question is solved by the host sysctl above (#164), not by --cap-add.
 docker run -d --name %[4]s \
   --restart unless-stopped \
   --network host \
-  --cap-add=NET_BIND_SERVICE \
   -v %[3]s:%[3]s \
   %[2]s \
   run --acme-email=%[1]s
@@ -82,8 +99,12 @@ set -euo pipefail
 echo "==> Pulling %[2]s"
 docker pull %[2]s
 
-# Re-assert the UFW rules from BootScript on the reboot path so an in-place
-# upgrade on a VPS that lost UFW state re-establishes them. See #165.
+# Re-assert host sysctl + UFW rules on the reboot path so an in-place
+# upgrade against a VPS where /etc/sysctl.d or UFW state was reset
+# (image rebuild, manual cleanup) re-establishes them. See #164/#165.
+mkdir -p /etc/sysctl.d
+echo 'net.ipv4.ip_unprivileged_port_start=0' > /etc/sysctl.d/99-conoha-proxy.conf
+sysctl --system >/dev/null
 if command -v ufw >/dev/null 2>&1; then
     ufw allow 80/tcp >/dev/null || true
     ufw allow 443/tcp >/dev/null || true
@@ -96,13 +117,11 @@ if docker inspect %[4]s >/dev/null 2>&1; then
 fi
 
 echo "==> Starting new %[4]s from %[2]s"
-# See BootScript for why --network host and --cap-add=NET_BIND_SERVICE are
-# required. The cap-add must be carried on the reboot path too — an
-# in-place upgrade that drops it would silently regress a working VPS.
+# See BootScript for why --network host is required and why the bind
+# permission is solved by the host sysctl above (#164), not by --cap-add.
 docker run -d --name %[4]s \
   --restart unless-stopped \
   --network host \
-  --cap-add=NET_BIND_SERVICE \
   -v %[3]s:%[3]s \
   %[2]s \
   run --acme-email=%[1]s

@@ -21,11 +21,16 @@ func TestBootScript_ContainsEssentials(t *testing.T) {
 		"ghcr.io/crowdy/conoha-proxy:latest",
 		"--acme-email=ops@example.com",
 		"--name conoha-proxy",
-		// #164: container runs as uid 65532 — without NET_BIND_SERVICE it
-		// can't bind :80/:443 on stock Ubuntu (default
-		// net.ipv4.ip_unprivileged_port_start=1024). DinD masks this with
-		// --privileged. Ship the cap on docker run so production matches.
-		"--cap-add=NET_BIND_SERVICE",
+		// #164: container runs as uid 65532 (image USERs nonroot). The
+		// bind() syscall checks effective caps; --cap-add=NET_BIND_SERVICE
+		// only adds to the bounding/permitted set, and the binary has no
+		// file caps, so the cap never reaches the effective set. The
+		// per-container --sysctl is rejected when --network host is set
+		// (host netns sysctls are not container-namespaced). Only host-
+		// level sysctl works. Persist via /etc/sysctl.d so reboots survive.
+		"net.ipv4.ip_unprivileged_port_start=0",
+		"/etc/sysctl.d/99-conoha-proxy.conf",
+		"sysctl --system",
 		// #165: stock Ubuntu cloud images run UFW with policy DROP and only
 		// SSH allowed. Without these rules the proxy listens on :80/:443
 		// inside the VPS but external traffic — including LE HTTP-01 — is
@@ -54,9 +59,11 @@ func TestRebootScript_PullsStopsRemovesStarts(t *testing.T) {
 		"docker rm conoha-proxy",
 		"--network host",
 		"--acme-email=ops@example.com",
-		// #164: same cap-add must be on the reboot path so an in-place
-		// upgrade doesn't silently regress a previously-working VPS.
-		"--cap-add=NET_BIND_SERVICE",
+		// #164: re-assert the host sysctl on the reboot path so an
+		// in-place upgrade doesn't silently regress a VPS where
+		// /etc/sysctl.d was reset (image rebuild, manual cleanup).
+		"net.ipv4.ip_unprivileged_port_start=0",
+		"sysctl --system",
 		// #165: reboot path keeps the rules idempotent so an in-place
 		// upgrade on a VPS that lost UFW state (manual flush, image
 		// rebuild) re-establishes them.
