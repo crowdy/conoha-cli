@@ -26,6 +26,14 @@ func TestBootScript_ContainsEssentials(t *testing.T) {
 		// net.ipv4.ip_unprivileged_port_start=1024). DinD masks this with
 		// --privileged. Ship the cap on docker run so production matches.
 		"--cap-add=NET_BIND_SERVICE",
+		// #165: stock Ubuntu cloud images run UFW with policy DROP and only
+		// SSH allowed. Without these rules the proxy listens on :80/:443
+		// inside the VPS but external traffic — including LE HTTP-01 — is
+		// dropped. Guard with `command -v ufw` so the same script is a
+		// no-op on images without UFW.
+		"command -v ufw",
+		"ufw allow 80/tcp",
+		"ufw allow 443/tcp",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("BootScript missing %q:\n%s", want, s)
@@ -49,6 +57,12 @@ func TestRebootScript_PullsStopsRemovesStarts(t *testing.T) {
 		// #164: same cap-add must be on the reboot path so an in-place
 		// upgrade doesn't silently regress a previously-working VPS.
 		"--cap-add=NET_BIND_SERVICE",
+		// #165: reboot path keeps the rules idempotent so an in-place
+		// upgrade on a VPS that lost UFW state (manual flush, image
+		// rebuild) re-establishes them.
+		"command -v ufw",
+		"ufw allow 80/tcp",
+		"ufw allow 443/tcp",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("RebootScript missing %q:\n%s", want, s)
