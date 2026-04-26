@@ -9,6 +9,7 @@ import (
 
 	"github.com/crowdy/conoha-cli/cmd/cmdutil"
 	"github.com/crowdy/conoha-cli/internal/api"
+	"github.com/crowdy/conoha-cli/internal/config"
 	"github.com/crowdy/conoha-cli/internal/model"
 	"github.com/crowdy/conoha-cli/internal/prompt"
 	internalssh "github.com/crowdy/conoha-cli/internal/ssh"
@@ -63,12 +64,9 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 		return nil, err
 	}
 
-	appName, _ := cmd.Flags().GetString("app-name")
-	if appName == "" {
-		appName, err = prompt.String("App name")
-		if err != nil {
-			return nil, err
-		}
+	appName, err := resolveAppName(cmd)
+	if err != nil {
+		return nil, err
 	}
 	// Legacy-tolerant: connectToApp is reached by logs/stop/restart/status/
 	// rollback/destroy — all read/ops on already-deployed apps. Accepting the
@@ -113,6 +111,32 @@ func connectToApp(cmd *cobra.Command, args []string) (*appContext, error) {
 		User:        user,
 		ComposeFile: composeFile,
 	}, nil
+}
+
+// resolveAppName picks the app name from --app-name when set, otherwise from
+// conoha.yml in cwd, otherwise via prompt. The cwd fallback matches what
+// init/deploy/rollback already do via LoadProjectFile and keeps the `app …`
+// family consistent — without it, every command that funnels through
+// connectToApp surfaces a confusing "validation error on App name: input
+// required but --no-input is set" when run from a project dir under
+// --no-input.
+//
+// Validate() is required (not just LoadProjectFile error-free): if the YAML
+// parses but the project is malformed (missing hosts, invalid name shape,
+// etc.) we'd rather surface the prompt's --no-input error than smuggle in a
+// half-valid name and let a later code path fail with a vaguer message.
+func resolveAppName(cmd *cobra.Command) (string, error) {
+	if name, _ := cmd.Flags().GetString("app-name"); name != "" {
+		return name, nil
+	}
+	if pf, err := config.LoadProjectFile(config.ProjectFileName); err == nil {
+		// Validate() guarantees Name is non-empty and DNS-1123 valid on
+		// success — no extra Name != "" check needed.
+		if pf.Validate() == nil {
+			return pf.Name, nil
+		}
+	}
+	return prompt.String("App name")
 }
 
 func addAppFlags(cmd *cobra.Command) {
