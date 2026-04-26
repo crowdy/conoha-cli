@@ -62,7 +62,7 @@ func TestPresetRegistry_HasProxy(t *testing.T) {
 	}
 }
 
-func TestValidatePresetSecurityGroups_AllPresent(t *testing.T) {
+func TestValidateSecurityGroupNames_AllPresent(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/v2.0/security-groups") {
 			t.Errorf("unexpected path: %s", r.URL.Path)
@@ -85,12 +85,12 @@ func TestValidatePresetSecurityGroups_AllPresent(t *testing.T) {
 	networkAPI := api.NewNetworkAPI(client)
 
 	want := []string{"default", "IPv4v6-SSH", "IPv4v6-Web", "IPv4v6-ICMP"}
-	if err := validatePresetSecurityGroups(networkAPI, want); err != nil {
+	if err := validateSecurityGroupNames(networkAPI, want); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 }
 
-func TestValidatePresetSecurityGroups_Missing(t *testing.T) {
+func TestValidateSecurityGroupNames_Missing(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -107,7 +107,7 @@ func TestValidatePresetSecurityGroups_Missing(t *testing.T) {
 	networkAPI := api.NewNetworkAPI(client)
 
 	want := []string{"default", "IPv4v6-SSH", "IPv4v6-Web", "IPv4v6-ICMP"}
-	err := validatePresetSecurityGroups(networkAPI, want)
+	err := validateSecurityGroupNames(networkAPI, want)
 	if err == nil {
 		t.Fatal("expected error for missing SGs, got nil")
 	}
@@ -124,7 +124,7 @@ func TestValidatePresetSecurityGroups_Missing(t *testing.T) {
 	}
 }
 
-func TestValidatePresetSecurityGroups_APIError(t *testing.T) {
+func TestValidateSecurityGroupNames_APIError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		_, _ = w.Write([]byte(`{"error":"boom"}`))
@@ -135,7 +135,7 @@ func TestValidatePresetSecurityGroups_APIError(t *testing.T) {
 	client := &api.Client{HTTP: ts.Client(), Token: "fake-token", TenantID: "tenant-1"}
 	networkAPI := api.NewNetworkAPI(client)
 
-	err := validatePresetSecurityGroups(networkAPI, []string{"default"})
+	err := validateSecurityGroupNames(networkAPI, []string{"default"})
 	if err == nil {
 		t.Fatal("expected error from 500 response, got nil")
 	}
