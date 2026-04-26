@@ -114,9 +114,17 @@ func TestWaitForHealthy_RecoversAfterRestart(t *testing.T) {
 	}
 }
 
-func TestWaitForHealthy_TimesOutOnRestartLoop(t *testing.T) {
-	// Container bounces forever. With a tiny timeout we get a timeout error
-	// containing the last status and the docker logs tail.
+func TestWaitForHealthy_TimesOutWhenNeverStable(t *testing.T) {
+	// Container alternates `running`/`restarting` and never holds running
+	// for the StableSamples threshold. With a tiny timeout we get a timeout
+	// error containing the last status and the docker logs tail.
+	//
+	// Naming note: this test does NOT prove the counter resets — that's
+	// what TestWaitForHealthy_RecoversAfterRestart covers. This test only
+	// proves "no consecutive run of length >= StableSamples => timeout".
+	// The earlier name "TimesOutOnRestartLoop" overpromised because the
+	// fake's last-tick cycling means once the slice exhausts, every
+	// subsequent inspect returns the terminal entry forever.
 	ticks := make([]tick, 100)
 	for i := range ticks {
 		if i%2 == 0 {

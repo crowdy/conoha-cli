@@ -3,13 +3,22 @@ package proxy
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 )
 
+// logsTailLines is the number of trailing `docker logs` lines included in
+// the timeout error from WaitForHealthy. Defined as a const so the call
+// site and the format string can never desync.
+const logsTailLines = 20
+
 // Sleeper is `time.Sleep` in production. Tests inject a no-op or fast-forward
 // implementation so polling-loop assertions don't depend on wall-clock.
+//
+// Note: not context-aware. A user Ctrl-C still terminates `proxy boot`
+// because Go's default SIGINT handler aborts the process, but graceful
+// shutdown isn't supported. If we ever want context cancellation here,
+// the signature should grow a `context.Context`.
 type Sleeper func(time.Duration)
 
 // HealthcheckOptions tunes WaitForHealthy. PollInterval defaults to 1s,
@@ -67,10 +76,10 @@ func WaitForHealthy(exec Executor, container, dataDir string, timeout time.Durat
 		}
 		sleep(opt.PollInterval)
 	}
-	logs := dockerLogsTail(exec, container, 20)
+	logs := dockerLogsTail(exec, container, logsTailLines)
 	return fmt.Errorf("conoha-proxy did not become healthy within %s (last container status: %q). "+
 		"Last %d lines of `docker logs %s`:\n%s",
-		timeout, lastStatus, 20, container, indentLines(logs, "  "))
+		timeout, lastStatus, logsTailLines, container, indentLines(logs, "  "))
 }
 
 // dockerInspectStatus returns the container's State.Status, or "missing" when
@@ -92,7 +101,11 @@ func dockerInspectStatus(exec Executor, container string) string {
 // treated as "not yet healthy" so the caller can keep polling.
 func healthzOK(exec Executor, dataDir string) bool {
 	var out bytes.Buffer
-	cmd := fmt.Sprintf("curl -sf --unix-socket %s/admin.sock http://admin/healthz", dataDir+"")
+	// shellQuote dataDir as defense-in-depth: --data-dir is user-supplied
+	// at the CLI flag level, and although the existing scripts trust it
+	// untreated, this command runs at a fresh shell layer so quoting here
+	// keeps any future "weird path" surprises from reaching the SSH session.
+	cmd := fmt.Sprintf("curl -sf --unix-socket %s/admin.sock http://admin/healthz", shellQuote(dataDir))
 	if err := exec.Run(cmd, nil, &out); err != nil {
 		return false
 	}
@@ -126,15 +139,10 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// Compile-time guard: WaitForHealthy must accept an io.Writer-friendly Executor.
-// Keeps refactors of the proxy.Executor signature from silently breaking us.
-var _ = func() Executor {
-	type _exec interface {
-		Run(string, io.Reader, io.Writer) error
-	}
-	var e _exec
-	if e == nil {
-		return nil
-	}
-	return e.(Executor)
-}()
+// (No compile-time guard here on purpose: every callsite of Executor — Client
+// in admin.go, SSHExecutor in sshexec.go, the polling helpers above — already
+// fails to compile if proxy.Executor's signature changes, so an extra guard
+// would be redundant. An earlier version added a function-literal "guard"
+// that turned out to be a runtime no-op due to a nil-interface short-circuit;
+// removing it instead of "fixing" it because the protection it nominally
+// offered is already provided by ordinary type checking.)
