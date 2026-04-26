@@ -30,6 +30,16 @@ chown 65532:65532 %[3]s
 # from the ACME servers — is silently dropped after 'proxy boot'. Open the
 # two ports here. 'command -v ufw' guards images without UFW (the rule add
 # is a no-op then). 'ufw allow' is idempotent.
+#
+# Placement (load-bearing): this snippet runs BEFORE the docker-inspect
+# short-circuit below so a re-run of 'proxy boot' against a VPS where UFW
+# state was flushed (manual reset, snapshot revert) still re-asserts the
+# rules even when the container already exists. Don't "tidy" it past the
+# early-exit.
+#
+# Errors are intentionally swallowed via '|| true': #165 is a best-effort
+# firewall convenience, not a hard prerequisite. A future "ports closed"
+# debug should run 'ufw status' directly rather than relying on this log.
 if command -v ufw >/dev/null 2>&1; then
     ufw allow 80/tcp >/dev/null || true
     ufw allow 443/tcp >/dev/null || true
