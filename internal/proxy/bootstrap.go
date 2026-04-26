@@ -25,6 +25,26 @@ echo "==> Preparing data directory %[3]s"
 mkdir -p %[3]s
 chown 65532:65532 %[3]s
 
+# #165: stock Ubuntu cloud images run UFW with policy DROP and only SSH
+# allowed, so external traffic to :80/:443 — including LE HTTP-01 challenge
+# from the ACME servers — is silently dropped after 'proxy boot'. Open the
+# two ports here. 'command -v ufw' guards images without UFW (the rule add
+# is a no-op then). 'ufw allow' is idempotent.
+#
+# Placement (load-bearing): this snippet runs BEFORE the docker-inspect
+# short-circuit below so a re-run of 'proxy boot' against a VPS where UFW
+# state was flushed (manual reset, snapshot revert) still re-asserts the
+# rules even when the container already exists. Don't "tidy" it past the
+# early-exit.
+#
+# Errors are intentionally swallowed via '|| true': #165 is a best-effort
+# firewall convenience, not a hard prerequisite. A future "ports closed"
+# debug should run 'ufw status' directly rather than relying on this log.
+if command -v ufw >/dev/null 2>&1; then
+    ufw allow 80/tcp >/dev/null || true
+    ufw allow 443/tcp >/dev/null || true
+fi
+
 if docker inspect %[4]s >/dev/null 2>&1; then
     echo "Container %[4]s already exists. Use 'conoha proxy reboot' to upgrade."
     exit 0
@@ -61,6 +81,13 @@ set -euo pipefail
 
 echo "==> Pulling %[2]s"
 docker pull %[2]s
+
+# Re-assert the UFW rules from BootScript on the reboot path so an in-place
+# upgrade on a VPS that lost UFW state re-establishes them. See #165.
+if command -v ufw >/dev/null 2>&1; then
+    ufw allow 80/tcp >/dev/null || true
+    ufw allow 443/tcp >/dev/null || true
+fi
 
 if docker inspect %[4]s >/dev/null 2>&1; then
     echo "==> Stopping %[4]s"
