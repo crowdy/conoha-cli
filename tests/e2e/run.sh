@@ -536,4 +536,185 @@ fi
 echo "  data dir /var/lib/conoha-proxy preserved"
 
 log "Phase 3 passed (scenarios #7-12)"
+
+###############################################################################
+# Phase 4 (issue #154 — subdomain-split multi-host scenario)
+###############################################################################
+# Exercises the full lifecycle on a project that declares both a root web
+# block and one expose block (label `api`, host api.e2e.local, port 8080).
+# Spec: docs/superpowers/specs/2026-04-24-subdomain-split-design.md.
+#
+# Phase 3's last step removed the proxy (data dir kept), so we re-boot it
+# before re-staging a fresh project under a distinct app name. That keeps
+# Phase 4 independent: a regression in Phases 1-3 still surfaces in those
+# phases, and a regression in multi-host code surfaces here.
+#
+# The scenario follows issue #154 acceptance: init → deploy → status (both
+# services visible) → rollback --target=api (only api swapped) → deploy
+# (re-roll into a unified slot) → destroy (both proxy services 404).
+
+MH_APP="e2e-multihost"
+MH_API_SVC="${MH_APP}-api"
+MH_WEB_HOST="${CONOHA_YML_HOST}"            # e2e.local
+MH_API_HOST="api.${CONOHA_YML_HOST}"        # api.e2e.local
+
+log "Phase 4 setup: re-boot proxy and stage multi-host project"
+"$CONOHA" proxy boot "${SSH_FLAGS[@]}" --acme-email=e2e@example.local e2e-target
+
+# Wait for the admin socket again — proxy boot returns once the container
+# is created, but the in-container conoha-proxy needs another moment to
+# bind /admin.sock. Mirrors the Phase 1 wait so the next admin call lands.
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -p "$HOST_SSH_PORT" -i "$WORKDIR/id_ed25519" root@127.0.0.1 \
+    'for i in $(seq 1 30); do [ -S /var/lib/conoha-proxy/admin.sock ] && exit 0; sleep 1; done; exit 1'
+
+MH_PROJECT="$WORKDIR/multihost"
+mkdir -p "$MH_PROJECT"
+cp tests/e2e/fixtures/multi-host/conoha.yml "$MH_PROJECT/conoha.yml"
+cp tests/e2e/fixtures/multi-host/docker-compose.yml "$MH_PROJECT/docker-compose.yml"
+
+mh_admin() {
+  ssh_exec "curl -s -o /dev/null -w '%{http_code}' --unix-socket /var/lib/conoha-proxy/admin.sock $1"
+}
+mh_svc_json() {
+  ssh_exec "curl -sf --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/$1"
+}
+
+log "Step P4.1: app init — expect both root and api services registered"
+( cd "$MH_PROJECT" && "$CONOHA" app init "${SSH_FLAGS[@]}" e2e-target )
+for svc in "$MH_APP" "$MH_API_SVC"; do
+  if ! mh_svc_json "$svc" | grep -q "\"name\":\"$svc\""; then
+    echo "service $svc not registered after init" >&2
+    mh_svc_json "$svc" >&2 || true
+    exit 1
+  fi
+done
+echo "  both services registered: $MH_APP, $MH_API_SVC"
+
+log "Step P4.2: app deploy --slot blue (first cycle)"
+( cd "$MH_PROJECT" && "$CONOHA" app deploy "${SSH_FLAGS[@]}" --slot blue e2e-target )
+mh_blue_root="$(mh_svc_json "$MH_APP" | svc_field active_target.url)"
+mh_blue_api="$(mh_svc_json "$MH_API_SVC" | svc_field active_target.url)"
+if [ -z "$mh_blue_root" ] || [ -z "$mh_blue_api" ]; then
+  echo "first deploy did not set active_target on both services" >&2
+  echo "  root: $mh_blue_root" >&2
+  echo "  api : $mh_blue_api" >&2
+  exit 1
+fi
+echo "  blue active: root=$mh_blue_root  api=$mh_blue_api"
+
+# Routing sanity: web on e2e.local hits the nginx default page (200/redirect),
+# api on api.e2e.local hits our inline 'api ok' (200). Use the same redirect-
+# tolerant matcher as Phase 1: the proxy's HTTP→HTTPS path can return 301.
+mh_assert_routed() {
+  local host="$1"
+  local label="$2"
+  local status
+  status=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+       -H "Host: ${host}" \
+       "http://127.0.0.1:${HOST_HTTP_PORT}/" || echo 000)
+  case "$status" in
+    2??|301|302|308) echo "  $label routed (HTTP $status via Host: $host)" ;;
+    *)
+      echo "GET / via Host: $host returned unexpected status: $status" >&2
+      docker exec "$TARGET_NAME" docker logs conoha-proxy --tail 100 || true
+      return 1
+      ;;
+  esac
+}
+mh_assert_routed "$MH_WEB_HOST" "web"
+mh_assert_routed "$MH_API_HOST" "api"
+
+log "Step P4.3: second deploy --slot green — sets up draining_target on both"
+( cd "$MH_PROJECT" && "$CONOHA" app deploy "${SSH_FLAGS[@]}" --slot green e2e-target )
+mh_green_root="$(mh_svc_json "$MH_APP" | svc_field active_target.url)"
+mh_green_api="$(mh_svc_json "$MH_API_SVC" | svc_field active_target.url)"
+mh_drain_root="$(mh_svc_json "$MH_APP" | svc_field draining_target.url)"
+mh_drain_api="$(mh_svc_json "$MH_API_SVC" | svc_field draining_target.url)"
+if [ "$mh_green_root" = "$mh_blue_root" ] || [ "$mh_drain_root" != "$mh_blue_root" ]; then
+  echo "root web did not swap blue→green" >&2
+  echo "  active=$mh_green_root draining=$mh_drain_root (expected draining=$mh_blue_root)" >&2
+  exit 1
+fi
+if [ "$mh_green_api" = "$mh_blue_api" ] || [ "$mh_drain_api" != "$mh_blue_api" ]; then
+  echo "api block did not swap blue→green" >&2
+  echo "  active=$mh_green_api draining=$mh_drain_api (expected draining=$mh_blue_api)" >&2
+  exit 1
+fi
+echo "  green active: root=$mh_green_root  api=$mh_green_api"
+
+log "Step P4.4: app status --format json — both services present"
+status_out="$WORKDIR/mh-status.json"
+( cd "$MH_PROJECT" && "$CONOHA" app status "${SSH_FLAGS[@]}" --format json e2e-target ) \
+    >"$status_out"
+# Schema: {"root": {...}, "expose": [{"label": "api", "service": {...}}]}
+if ! python3 -c "
+import json, sys
+d = json.load(open('$status_out'))
+assert d.get('root') is not None, 'root missing'
+assert d['root'].get('name') == '$MH_APP', f\"unexpected root name: {d['root'].get('name')}\"
+exp = d.get('expose') or []
+assert len(exp) == 1 and exp[0].get('label') == 'api', f'expose entry wrong: {exp}'
+assert exp[0].get('service', {}).get('name') == '$MH_API_SVC', f\"api service name wrong: {exp[0].get('service')}\"
+"; then
+  echo "status --format json missing expected root/expose entries:" >&2
+  cat "$status_out" >&2
+  exit 1
+fi
+echo "  status json includes root + expose[api]"
+
+log "Step P4.5: app rollback --target=api — only api swaps back"
+( cd "$MH_PROJECT" && "$CONOHA" app rollback "${SSH_FLAGS[@]}" --target=api --drain-ms 2000 e2e-target )
+mh_post_root_active="$(mh_svc_json "$MH_APP" | svc_field active_target.url)"
+mh_post_api_active="$(mh_svc_json "$MH_API_SVC" | svc_field active_target.url)"
+mh_post_api_drain="$(mh_svc_json "$MH_API_SVC" | svc_field draining_target.url)"
+if [ "$mh_post_root_active" != "$mh_green_root" ]; then
+  echo "root web should still be on green ($mh_green_root) but is $mh_post_root_active" >&2
+  exit 1
+fi
+if [ "$mh_post_api_active" != "$mh_blue_api" ]; then
+  echo "api should have swapped back to blue ($mh_blue_api) but is $mh_post_api_active" >&2
+  exit 1
+fi
+if [ "$mh_post_api_drain" != "$mh_green_api" ]; then
+  echo "api draining_target should be green ($mh_green_api) but is $mh_post_api_drain" >&2
+  exit 1
+fi
+echo "  api swapped back; web unchanged (only api affected by --target=api)"
+
+log "Step P4.6: app deploy --slot reroll — re-roll out of the partial-rollback state"
+( cd "$MH_PROJECT" && "$CONOHA" app deploy "${SSH_FLAGS[@]}" --slot reroll e2e-target )
+mh_reroll_root="$(mh_svc_json "$MH_APP" | svc_field active_target.url)"
+mh_reroll_api="$(mh_svc_json "$MH_API_SVC" | svc_field active_target.url)"
+if [ -z "$mh_reroll_root" ] || [ -z "$mh_reroll_api" ]; then
+  echo "re-roll did not set active_target on both services" >&2
+  echo "  root: $mh_reroll_root  api: $mh_reroll_api" >&2
+  exit 1
+fi
+if [ "$mh_reroll_root" = "$mh_green_root" ] || [ "$mh_reroll_api" = "$mh_post_api_active" ]; then
+  echo "re-roll active URLs should differ from prior state" >&2
+  echo "  root: prev=$mh_green_root now=$mh_reroll_root" >&2
+  echo "  api : prev=$mh_post_api_active now=$mh_reroll_api" >&2
+  exit 1
+fi
+echo "  re-roll active: root=$mh_reroll_root  api=$mh_reroll_api"
+
+log "Step P4.7: app destroy — both proxy services must be 404"
+( cd "$MH_PROJECT" && "$CONOHA" app destroy "${SSH_FLAGS[@]}" --yes --app-name "$MH_APP" e2e-target )
+for svc in "$MH_APP" "$MH_API_SVC"; do
+  code="$(mh_admin "http://admin/v1/services/$svc")"
+  if [ "$code" != "404" ]; then
+    echo "service $svc still reachable after destroy (HTTP $code)" >&2
+    mh_svc_json "$svc" >&2 || true
+    exit 1
+  fi
+done
+echo "  both services deregistered (404 on admin GET)"
+if ssh_exec "test -d /opt/conoha/$MH_APP"; then
+  echo "/opt/conoha/$MH_APP still exists after destroy" >&2
+  exit 1
+fi
+echo "  app dir removed"
+
+log "Phase 4 passed (issue #154 — multi-host)"
 log "E2E harness: all phases passed"

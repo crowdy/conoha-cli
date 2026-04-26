@@ -1,0 +1,17 @@
+services:
+  web:
+    image: nginx:1.27-alpine
+    # Internal port 80 (nginx default). conoha's deploy override injects
+    # "127.0.0.1:0:80" for blue/green host-port discovery — same pattern
+    # as the single-host fixture. See ../docker-compose.yml for context.
+
+  api:
+    image: nginx:1.27-alpine
+    # Rewrite the default server block to listen on 8080 so the api
+    # block has a port distinct from web's 80 (per issue #154 scope).
+    # Done inline to keep the fixture two files; a dedicated nginx.conf
+    # would force a bind mount that's awkward over the SSH+rsync deploy.
+    command:
+      - sh
+      - -c
+      - "echo 'server { listen 8080; location / { return 200 \"api ok\\n\"; } }' > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"
