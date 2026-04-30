@@ -8,7 +8,11 @@ build:
 	go build $(LDFLAGS) -o $(BINARY) .
 
 install:
-	go install $(LDFLAGS) .
+	@GOBIN_DIR="$$(go env GOBIN)"; \
+	if [ -z "$$GOBIN_DIR" ]; then GOBIN_DIR="$$(go env GOPATH)/bin"; fi; \
+	mkdir -p "$$GOBIN_DIR"; \
+	go build $(LDFLAGS) -o "$$GOBIN_DIR/$(BINARY)" . && \
+	echo "installed: $$GOBIN_DIR/$(BINARY)"
 
 test:
 	go test ./... -v
