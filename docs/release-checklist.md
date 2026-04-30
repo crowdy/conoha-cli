@@ -112,6 +112,12 @@ If §1 is green and every row in §2 is either ✓ or justified-waived:
 5. **Curate the GitHub release body.** `gh release edit v0.x.0` and replace
    the auto-generated changelog with the curated body — typically the
    final-tag annotation message, plus a link back to the smoke run.
+6. **Merge the banner-bump PR.** The `Release` workflow's `update-banner`
+   job opens `chore(banner): bump version pill to v0.x.0` against `main`
+   after goreleaser succeeds. It edits only `banner.svg` (the version
+   pill rendered in the README header). Squash-merge it; no review
+   needed. If you cut a release out-of-band, run `make banner-version
+   V=v0.x.0` locally and commit instead.
 
 ## 4. Next release deltas
 

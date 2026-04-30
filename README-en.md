@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="./banner.svg" alt="conoha-cli — One-command deployment for ConoHa VPS" width="800">
+</div>
+
 # conoha - ConoHa VPS3 CLI
 
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev/)

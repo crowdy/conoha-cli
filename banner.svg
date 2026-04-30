@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" width="100%" height="auto" role="img" aria-label="conoha-cli banner">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="accent-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+    <style>
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 800; font-size: 52px; fill: #f8fafc; }
+      .subtitle { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 400; font-size: 18px; fill: #94a3b8; }
+      .pill { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 500; font-size: 12px; fill: #cbd5e1; }
+      .version { font-family: "Fira Code", monospace, sans-serif; font-weight: 600; font-size: 12px; fill: #38bdf8; }
+      .prompt { fill: #38bdf8; font-family: "Fira Code", monospace, sans-serif; font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect width="800" height="250" rx="16" fill="url(#bg-gradient)" />
+
+  <!-- macOS-style traffic lights -->
+  <circle cx="30" cy="30" r="6" fill="#ef4444" />
+  <circle cx="50" cy="30" r="6" fill="#eab308" />
+  <circle cx="70" cy="30" r="6" fill="#22c55e" />
+
+  <!-- Version badge (top-right) -->
+  <g transform="translate(700, 20)">
+    <rect width="80" height="22" rx="11" fill="#0b1220" stroke="#38bdf8" stroke-opacity="0.4" />
+    <text x="40" y="15" text-anchor="middle" class="version">v0.7.1</text>
+  </g>
+
+  <!-- Decorative terminal lines (right side) -->
+  <g opacity="0.1" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round">
+    <path d="M 650 70 L 750 70 M 650 90 L 720 90 M 650 110 L 780 110" />
+    <path d="M 650 150 L 700 150 M 650 170 L 760 170 M 650 190 L 730 190" />
+  </g>
+
+  <!-- Title and subtitle -->
+  <g transform="translate(400, 115)" text-anchor="middle">
+    <text y="-5" class="title">
+      <tspan class="prompt">&gt;_ </tspan>conoha-cli
+    </text>
+    <text y="35" class="subtitle">
+      One-command deployment for ConoHa VPS
+    </text>
+  </g>
+
+  <!-- Feature pills -->
+  <g transform="translate(400, 180)" text-anchor="middle">
+    <g transform="translate(-180, 0)">
+      <rect x="-60" y="0" width="120" height="26" rx="13" fill="#1e293b" stroke="url(#accent-gradient)" stroke-opacity="0.5" />
+      <text y="17" class="pill">Single Binary</text>
+    </g>
+    <g transform="translate(0, 0)">
+      <rect x="-60" y="0" width="120" height="26" rx="13" fill="#1e293b" stroke="url(#accent-gradient)" stroke-opacity="0.5" />
+      <text y="17" class="pill">Multi-platform</text>
+    </g>
+    <g transform="translate(180, 0)">
+      <rect x="-60" y="0" width="120" height="26" rx="13" fill="#1e293b" stroke="url(#accent-gradient)" stroke-opacity="0.5" />
+      <text y="17" class="pill">Agent-friendly</text>
+    </g>
+  </g>
+</svg>
