@@ -34,3 +34,22 @@ docs/business/
 CLAUDE.md
 diary/
 .worktrees/
+
+# Secret files (NEVER commit any of these)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.netrc
+
+# Working memos / handoff notes
+docs/memory/
+
+# Pre-publish drafts (Qiita / blog) — must be masked before publishing
+docs/articles/qiita/

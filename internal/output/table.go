@@ -14,7 +14,7 @@ type TableFormatter struct {
 
 func (f *TableFormatter) Format(w io.Writer, data any) error {
 	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 
@@ -36,7 +36,7 @@ func (f *TableFormatter) Format(w io.Writer, data any) error {
 
 	// Get headers
 	elem := val.Index(0)
-	if elem.Kind() == reflect.Ptr {
+	if elem.Kind() == reflect.Pointer {
 		elem = elem.Elem()
 	}
 	elemType := elem.Type()
@@ -59,7 +59,7 @@ func (f *TableFormatter) Format(w io.Writer, data any) error {
 	// Write rows
 	for i := 0; i < val.Len(); i++ {
 		row := val.Index(i)
-		if row.Kind() == reflect.Ptr {
+		if row.Kind() == reflect.Pointer {
 			row = row.Elem()
 		}
 		fields := make([]string, row.NumField())

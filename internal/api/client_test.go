@@ -159,10 +159,10 @@ func TestBaseURLWithExtServiceMap(t *testing.T) {
 }
 
 func TestBaseURLWithEndpointOverride(t *testing.T) {
-	t.Setenv("CONOHA_ENDPOINT", "https://staging.internal.gmo.jp")
+	t.Setenv("CONOHA_ENDPOINT", "https://staging.example.test")
 	client := NewClient("c3j1", "tok", "tenant1")
 	url := client.BaseURL("compute")
-	expected := "https://staging.internal.gmo.jp"
+	expected := "https://staging.example.test"
 	if url != expected {
 		t.Errorf("expected %q, got %q", expected, url)
 	}

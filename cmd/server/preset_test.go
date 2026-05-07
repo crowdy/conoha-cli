@@ -371,6 +371,7 @@ func TestCreateCmd_ForFlagRegistered(t *testing.T) {
 	f := createCmd.Flags().Lookup("for")
 	if f == nil {
 		t.Fatal("create command missing --for flag")
+		return
 	}
 	if f.DefValue != "" {
 		t.Errorf("--for default = %q, want empty", f.DefValue)

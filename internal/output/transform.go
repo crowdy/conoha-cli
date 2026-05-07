@@ -34,7 +34,7 @@ func FilterRows(data any, filters []string) (any, error) {
 	}
 
 	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	if val.Kind() != reflect.Slice {
@@ -70,7 +70,7 @@ func FilterRows(data any, filters []string) (any, error) {
 
 	// Build field index map from json tags
 	elem := val.Index(0)
-	if elem.Kind() == reflect.Ptr {
+	if elem.Kind() == reflect.Pointer {
 		elem = elem.Elem()
 	}
 	elemType := elem.Type()
@@ -107,7 +107,7 @@ func FilterRows(data any, filters []string) (any, error) {
 	result := reflect.MakeSlice(val.Type(), 0, val.Len())
 	for i := 0; i < val.Len(); i++ {
 		row := val.Index(i)
-		if row.Kind() == reflect.Ptr {
+		if row.Kind() == reflect.Pointer {
 			row = row.Elem()
 		}
 		match := true
@@ -177,7 +177,7 @@ func SortRows(data any, sortBy string) (any, error) {
 	}
 
 	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	if val.Kind() != reflect.Slice {
@@ -189,7 +189,7 @@ func SortRows(data any, sortBy string) (any, error) {
 
 	// Find field index
 	elem := val.Index(0)
-	if elem.Kind() == reflect.Ptr {
+	if elem.Kind() == reflect.Pointer {
 		elem = elem.Elem()
 	}
 	elemType := elem.Type()
@@ -218,10 +218,10 @@ func SortRows(data any, sortBy string) (any, error) {
 	sort.SliceStable(sorted.Interface(), func(i, j int) bool {
 		a := sorted.Index(i)
 		b := sorted.Index(j)
-		if a.Kind() == reflect.Ptr {
+		if a.Kind() == reflect.Pointer {
 			a = a.Elem()
 		}
-		if b.Kind() == reflect.Ptr {
+		if b.Kind() == reflect.Pointer {
 			b = b.Elem()
 		}
 		fa := a.Field(fieldIdx)

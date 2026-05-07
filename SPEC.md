@@ -260,12 +260,12 @@ Authenticate()          → https://identity.{region}.conoha.io/v3/auth/tokens
 
 ```bash
 # Example: point to staging environment
-export CONOHA_ENDPOINT=https://staging-api.internal.gmo.jp
+export CONOHA_ENDPOINT=https://staging.example.test
 
 # This makes all API calls go to:
-#   https://staging-api.internal.gmo.jp/v2.1/servers/detail    (compute)
-#   https://staging-api.internal.gmo.jp/v3/auth/tokens         (identity)
-#   https://staging-api.internal.gmo.jp/v3/{tenant}/volumes    (block-storage)
+#   https://staging.example.test/v2.1/servers/detail    (compute)
+#   https://staging.example.test/v3/auth/tokens         (identity)
+#   https://staging.example.test/v3/{tenant}/volumes    (block-storage)
 #   etc.
 ```
 
@@ -292,10 +292,10 @@ export CONOHA_ENDPOINT=https://staging-api.internal.gmo.jp
 **Example test case**:
 ```go
 func TestBaseURLWithEndpointOverride(t *testing.T) {
-    t.Setenv("CONOHA_ENDPOINT", "https://staging.internal.gmo.jp")
+    t.Setenv("CONOHA_ENDPOINT", "https://staging.example.test")
     client := NewClient("c3j1", "tok", "tenant1")
     url := client.BaseURL("compute")
-    expected := "https://staging.internal.gmo.jp"
+    expected := "https://staging.example.test"
     if url != expected {
         t.Errorf("expected %q, got %q", expected, url)
     }
