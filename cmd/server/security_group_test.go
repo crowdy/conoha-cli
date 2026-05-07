@@ -24,6 +24,7 @@ func TestAddSecurityGroupNameFlagRequired(t *testing.T) {
 	f := addSecurityGroupCmd.Flags().Lookup("name")
 	if f == nil {
 		t.Fatal("add-security-group missing --name flag")
+		return
 	}
 	ann := f.Annotations["cobra_annotation_bash_completion_one_required_flag"]
 	if len(ann) == 0 {
@@ -38,6 +39,7 @@ func TestRemoveSecurityGroupNameFlagRequired(t *testing.T) {
 	f := removeSecurityGroupCmd.Flags().Lookup("name")
 	if f == nil {
 		t.Fatal("remove-security-group missing --name flag")
+		return
 	}
 	ann := f.Annotations["cobra_annotation_bash_completion_one_required_flag"]
 	if len(ann) == 0 {

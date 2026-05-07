@@ -23,6 +23,7 @@ func TestRollbackCmd_HasTargetFlag(t *testing.T) {
 	f := rollbackCmd.Flags().Lookup("target")
 	if f == nil {
 		t.Fatal("rollback should have --target flag")
+		return
 	}
 	if f.DefValue != "" {
 		t.Errorf("--target default = %q, want empty", f.DefValue)
