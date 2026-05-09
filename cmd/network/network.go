@@ -308,7 +308,7 @@ func init() {
 	}
 
 	sgShowCmd := &cobra.Command{
-		Use:   "show <id>",
+		Use:   "show <id|name>",
 		Short: "Show security group details",
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -316,11 +316,17 @@ func init() {
 			if err != nil {
 				return err
 			}
-			sg, err := api.NewNetworkAPI(client).GetSecurityGroup(args[0])
+			netAPI := api.NewNetworkAPI(client)
+			sg, err := netAPI.FindSecurityGroup(args[0])
 			if err != nil {
 				return err
 			}
-			return cmdutil.FormatOutput(cmd, sg)
+			// Re-fetch by ID to include rules (list endpoint may return abbreviated form).
+			full, err := netAPI.GetSecurityGroup(sg.ID)
+			if err != nil {
+				return err
+			}
+			return cmdutil.FormatOutput(cmd, full)
 		},
 	}
 
@@ -346,11 +352,27 @@ func init() {
 	_ = sgCreateCmd.MarkFlagRequired("name")
 
 	sgDeleteCmd := &cobra.Command{
-		Use:   "delete <id>",
+		Use:   "delete <id|name>",
 		Short: "Delete a security group",
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ok, err := prompt.Confirm(fmt.Sprintf("Delete security group %s?", args[0]))
+			client, err := cmdutil.NewClient(cmd)
+			if err != nil {
+				return err
+			}
+			netAPI := api.NewNetworkAPI(client)
+			// Resolve name → ID upfront (#194). Passing a name to the delete
+			// endpoint otherwise yields a confusing HTTP 405 from the
+			// upstream OpenStack API.
+			sg, err := netAPI.FindSecurityGroup(args[0])
+			if err != nil {
+				return err
+			}
+			label := sg.Name
+			if label == "" {
+				label = sg.ID
+			}
+			ok, err := prompt.Confirm(fmt.Sprintf("Delete security group %q (%s)?", label, sg.ID))
 			if err != nil {
 				return err
 			}
@@ -358,14 +380,10 @@ func init() {
 				fmt.Fprintln(os.Stderr, "Cancelled.")
 				return nil
 			}
-			client, err := cmdutil.NewClient(cmd)
-			if err != nil {
+			if err := netAPI.DeleteSecurityGroup(sg.ID); err != nil {
 				return err
 			}
-			if err := api.NewNetworkAPI(client).DeleteSecurityGroup(args[0]); err != nil {
-				return err
-			}
-			fmt.Fprintf(os.Stderr, "Security group %s deleted\n", args[0])
+			fmt.Fprintf(os.Stderr, "Security group %s deleted\n", sg.ID)
 			return nil
 		},
 	}

@@ -478,6 +478,50 @@ func TestSecurityGroupGetSecurityGroup(t *testing.T) {
 	}
 }
 
+// #194: sg delete needs name→ID resolution. FindSecurityGroup is the
+// shared helper used by both `sg show` and `sg delete`.
+func TestSecurityGroupFindSecurityGroup(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"security_groups": []map[string]any{
+				{"id": "sg-uuid-1", "name": "web", "description": "Web SG"},
+				{"id": "sg-uuid-2", "name": "db", "description": "DB SG"},
+			},
+		})
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+
+	api := NewNetworkAPI(newTestClient(ts))
+
+	t.Run("by name", func(t *testing.T) {
+		sg, err := api.FindSecurityGroup("web")
+		if err != nil {
+			t.Fatalf("FindSecurityGroup(name) error: %v", err)
+		}
+		if sg.ID != "sg-uuid-1" {
+			t.Errorf("expected ID 'sg-uuid-1', got %q", sg.ID)
+		}
+	})
+
+	t.Run("by id", func(t *testing.T) {
+		sg, err := api.FindSecurityGroup("sg-uuid-2")
+		if err != nil {
+			t.Fatalf("FindSecurityGroup(id) error: %v", err)
+		}
+		if sg.Name != "db" {
+			t.Errorf("expected name 'db', got %q", sg.Name)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		if _, err := api.FindSecurityGroup("nonexistent"); err == nil {
+			t.Fatal("expected error for unknown name/ID")
+		}
+	})
+}
+
 func TestSecurityGroupCreateSecurityGroup(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

@@ -283,17 +283,27 @@ func (a *NetworkAPI) RemoveServerSecurityGroup(serverID, sgName string) error {
 	return nil
 }
 
-func (a *NetworkAPI) resolveSecurityGroupID(name string) (string, error) {
+// FindSecurityGroup looks up a security group by either its UUID or name.
+// Used by commands that accept "<id|name>" arguments (sg show / sg delete).
+func (a *NetworkAPI) FindSecurityGroup(nameOrID string) (*model.SecurityGroup, error) {
 	sgs, err := a.ListSecurityGroups()
+	if err != nil {
+		return nil, err
+	}
+	for i := range sgs {
+		if sgs[i].ID == nameOrID || sgs[i].Name == nameOrID {
+			return &sgs[i], nil
+		}
+	}
+	return nil, fmt.Errorf("security group not found: %s", nameOrID)
+}
+
+func (a *NetworkAPI) resolveSecurityGroupID(name string) (string, error) {
+	sg, err := a.FindSecurityGroup(name)
 	if err != nil {
 		return "", err
 	}
-	for _, sg := range sgs {
-		if sg.Name == name || sg.ID == name {
-			return sg.ID, nil
-		}
-	}
-	return "", fmt.Errorf("security group not found: %s", name)
+	return sg.ID, nil
 }
 
 // AttachPort attaches a port to a server (uses compute API).
