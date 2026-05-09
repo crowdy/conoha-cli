@@ -211,6 +211,63 @@ func TestTableFormatterSingleStructPointer(t *testing.T) {
 	}
 }
 
+// #193: *int and *string fields must render as their dereferenced value,
+// not as a pointer address, in table and csv output. nil pointers render
+// as empty strings.
+func TestTableFormatterPointerFields(t *testing.T) {
+	type rowWithPtrs struct {
+		Name string  `json:"name"`
+		Min  *int    `json:"min"`
+		Max  *int    `json:"max"`
+		Note *string `json:"note"`
+	}
+	min, max := 53, 5353
+	note := "dns"
+	data := []rowWithPtrs{
+		{Name: "a", Min: &min, Max: &max, Note: &note},
+		{Name: "b", Min: nil, Max: nil, Note: nil},
+	}
+
+	var buf bytes.Buffer
+	if err := (&TableFormatter{}).Format(&buf, data); err != nil {
+		t.Fatalf("Format() error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "53") || !strings.Contains(out, "5353") || !strings.Contains(out, "dns") {
+		t.Errorf("expected dereferenced values 53/5353/dns, got: %s", out)
+	}
+	if strings.Contains(out, "0x") {
+		t.Errorf("output contains pointer-like substring (0x...), got: %s", out)
+	}
+}
+
+func TestCSVFormatterPointerFields(t *testing.T) {
+	type rowWithPtrs struct {
+		Name string `json:"name"`
+		Min  *int   `json:"min"`
+	}
+	min := 7
+	data := []rowWithPtrs{
+		{Name: "a", Min: &min},
+		{Name: "b", Min: nil},
+	}
+
+	var buf bytes.Buffer
+	if err := (&CSVFormatter{}).Format(&buf, data); err != nil {
+		t.Fatalf("Format() error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "a,7") {
+		t.Errorf("expected 'a,7' in csv, got: %s", out)
+	}
+	if !strings.Contains(out, "b,\n") && !strings.HasSuffix(strings.TrimRight(out, "\n"), "b,") {
+		t.Errorf("expected nil pointer to render as empty field, got: %q", out)
+	}
+	if strings.Contains(out, "0x") {
+		t.Errorf("csv output contains pointer-like substring, got: %s", out)
+	}
+}
+
 func TestNew(t *testing.T) {
 	tests := []struct {
 		format string

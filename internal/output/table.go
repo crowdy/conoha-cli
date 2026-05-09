@@ -64,7 +64,7 @@ func (f *TableFormatter) Format(w io.Writer, data any) error {
 		}
 		fields := make([]string, row.NumField())
 		for j := 0; j < row.NumField(); j++ {
-			fields[j] = fmt.Sprintf("%v", row.Field(j).Interface())
+			fields[j] = formatFieldValue(row.Field(j))
 		}
 		if _, err := fmt.Fprintln(tw, strings.Join(fields, "\t")); err != nil {
 			return err

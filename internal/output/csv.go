@@ -62,7 +62,7 @@ func (f *CSVFormatter) Format(w io.Writer, data any) error {
 		}
 		record := make([]string, row.NumField())
 		for j := 0; j < row.NumField(); j++ {
-			record[j] = fmt.Sprintf("%v", row.Field(j).Interface())
+			record[j] = formatFieldValue(row.Field(j))
 		}
 		if err := writer.Write(record); err != nil {
 			return err
