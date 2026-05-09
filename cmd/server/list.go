@@ -62,6 +62,30 @@ var listCmd = &cobra.Command{
 	},
 }
 
+// serverShowDetail is the JSON/YAML/CSV shape of `server show`. It embeds
+// the raw model.Server (so existing fields keep their tag names) and adds
+// security_groups + ports, which are derived from a separate /v2.0/ports
+// query (#191). Only non-nil fields appear in JSON output thanks to
+// omitempty, so name-only consumers stay backwards-compatible.
+type serverShowDetail struct {
+	*model.Server `yaml:",inline"`
+	SecurityGroups []string                 `json:"security_groups,omitempty" yaml:"security_groups,omitempty"`
+	Ports          []serverShowDetailPort   `json:"ports,omitempty" yaml:"ports,omitempty"`
+	Volumes        []serverShowDetailVolume `json:"volumes,omitempty" yaml:"volumes,omitempty"`
+}
+
+type serverShowDetailPort struct {
+	ID         string   `json:"id" yaml:"id"`
+	MACAddress string   `json:"mac_address" yaml:"mac_address"`
+	IPs        []string `json:"ips" yaml:"ips"`
+}
+
+type serverShowDetailVolume struct {
+	ID     string `json:"id" yaml:"id"`
+	Device string `json:"device" yaml:"device"`
+	SizeGB int    `json:"size_gb,omitempty" yaml:"size_gb,omitempty"`
+}
+
 var showCmd = &cobra.Command{
 	Use:   "show <id|name>",
 	Short: "Show server details",
@@ -75,11 +99,6 @@ var showCmd = &cobra.Command{
 		server, err := compute.FindServer(args[0])
 		if err != nil {
 			return err
-		}
-
-		format := cmdutil.GetFormat(cmd)
-		if format != "" && format != "table" {
-			return output.New(format).Format(os.Stdout, server)
 		}
 
 		// Resolve flavor name
@@ -119,6 +138,67 @@ var showCmd = &cobra.Command{
 			}
 		}
 
+		// Resolve ports + security groups via the network API. Used by both
+		// the table renderer (existing behaviour) and structured-format
+		// output (#191 — JSON/YAML/CSV previously dropped this entirely).
+		networkAPI := api.NewNetworkAPI(client)
+		ports, _ := networkAPI.ListPortsByDevice(server.ID)
+		var sgNames []string
+		var detailPorts []serverShowDetailPort
+		if len(ports) > 0 {
+			sgMap := make(map[string]string)
+			if sgs, err := networkAPI.ListSecurityGroups(); err == nil {
+				for _, sg := range sgs {
+					sgMap[sg.ID] = sg.Name
+				}
+			}
+			detailPorts = make([]serverShowDetailPort, 0, len(ports))
+			for _, p := range ports {
+				ips := make([]string, 0, len(p.FixedIPs))
+				for _, ip := range p.FixedIPs {
+					ips = append(ips, ip.IPAddress)
+				}
+				detailPorts = append(detailPorts, serverShowDetailPort{
+					ID:         p.ID,
+					MACAddress: p.MACAddress,
+					IPs:        ips,
+				})
+			}
+			sgSeen := make(map[string]bool)
+			for _, p := range ports {
+				for _, sgID := range p.SecurityGroups {
+					if sgSeen[sgID] {
+						continue
+					}
+					sgSeen[sgID] = true
+					name := sgMap[sgID]
+					if name == "" {
+						name = sgID
+					}
+					sgNames = append(sgNames, name)
+				}
+			}
+		}
+
+		format := cmdutil.GetFormat(cmd)
+		if format != "" && format != "table" {
+			detailVolumes := make([]serverShowDetailVolume, 0, len(attachments))
+			for _, a := range attachments {
+				v := serverShowDetailVolume{ID: a.VolumeID, Device: a.Device}
+				if vol, err := volumeAPI.GetVolume(a.VolumeID); err == nil {
+					v.SizeGB = vol.Size
+				}
+				detailVolumes = append(detailVolumes, v)
+			}
+			detail := serverShowDetail{
+				Server:         server,
+				SecurityGroups: sgNames,
+				Ports:          detailPorts,
+				Volumes:        detailVolumes,
+			}
+			return output.New(format).Format(os.Stdout, detail)
+		}
+
 		// Human-readable key-value output
 		printServerDetail(server, flavorDisplay, imageDisplay)
 
@@ -134,46 +214,16 @@ var showCmd = &cobra.Command{
 			}
 		}
 
-		// Ports and Security Groups (non-fatal)
-		networkAPI := api.NewNetworkAPI(client)
-		if ports, err := networkAPI.ListPortsByDevice(server.ID); err == nil && len(ports) > 0 {
-			// Build SG ID-to-name map
-			sgMap := make(map[string]string)
-			if sgs, err := networkAPI.ListSecurityGroups(); err == nil {
-				for _, sg := range sgs {
-					sgMap[sg.ID] = sg.Name
-				}
-			}
-
+		if len(detailPorts) > 0 {
 			fmt.Println("Ports:")
-			for _, p := range ports {
-				var ips []string
-				for _, ip := range p.FixedIPs {
-					ips = append(ips, ip.IPAddress)
-				}
-				fmt.Printf("  %s mac=%s ips=[%s]\n", p.ID, p.MACAddress, strings.Join(ips, ","))
+			for _, p := range detailPorts {
+				fmt.Printf("  %s mac=%s ips=[%s]\n", p.ID, p.MACAddress, strings.Join(p.IPs, ","))
 			}
-
-			// Collect unique SGs across all ports
-			sgSeen := make(map[string]bool)
-			var sgNames []string
-			for _, p := range ports {
-				for _, sgID := range p.SecurityGroups {
-					if !sgSeen[sgID] {
-						sgSeen[sgID] = true
-						name := sgMap[sgID]
-						if name == "" {
-							name = sgID
-						}
-						sgNames = append(sgNames, name)
-					}
-				}
-			}
-			if len(sgNames) > 0 {
-				fmt.Println("Security Groups:")
-				for _, name := range sgNames {
-					fmt.Printf("  %s\n", name)
-				}
+		}
+		if len(sgNames) > 0 {
+			fmt.Println("Security Groups:")
+			for _, name := range sgNames {
+				fmt.Printf("  %s\n", name)
 			}
 		}
 
