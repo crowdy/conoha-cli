@@ -44,9 +44,14 @@ func (a *ImageAPI) GetImage(id string) (*model.Image, error) {
 // say `--image ubuntu-24.04` and have the CLI pick e.g.
 // `vmi-docker-29.2-ubuntu-24.04-amd64` when that's the only candidate.
 //
+// Resolution is restricted to status=active so the CLI never returns a
+// half-baked image (queued/saving/killed) that the boot path would
+// then reject. Callers needing every image regardless of status should
+// use ListImages directly.
+//
 // Resolution order:
 //  1. UUID-shaped input → GetImage
-//  2. Exact name match → that image
+//  2. Exact name match against an active image → that image
 //  3. Single substring match (case-insensitive) → that image
 //  4. Multiple substring matches → error listing candidates
 //  5. No match → error with hint
@@ -54,19 +59,23 @@ func (a *ImageAPI) FindImage(nameOrID string) (*model.Image, error) {
 	if looksLikeUUID(nameOrID) {
 		return a.GetImage(nameOrID)
 	}
+	if nameOrID == "" {
+		return nil, fmt.Errorf("image name cannot be empty (try `conoha image list` to see available images)")
+	}
 	images, err := a.ListImages()
 	if err != nil {
 		return nil, err
 	}
-	// Exact name match wins outright (active or otherwise) — even if a
-	// fuzzy substring would also hit, an exact equality is unambiguous.
+	// Exact name match wins outright over substring — even if a fuzzy
+	// substring would also hit, an exact equality is unambiguous.
 	for i := range images {
+		if images[i].Status != "active" {
+			continue
+		}
 		if images[i].Name == nameOrID {
 			return &images[i], nil
 		}
 	}
-	// Substring fallback restricted to active images so we don't surface
-	// half-baked uploads.
 	needle := strings.ToLower(nameOrID)
 	var matches []*model.Image
 	for i := range images {
