@@ -68,7 +68,7 @@ var listCmd = &cobra.Command{
 // query (#191). Only non-nil fields appear in JSON output thanks to
 // omitempty, so name-only consumers stay backwards-compatible.
 type serverShowDetail struct {
-	*model.Server `yaml:",inline"`
+	*model.Server  `yaml:",inline"`
 	SecurityGroups []string                 `json:"security_groups,omitempty" yaml:"security_groups,omitempty"`
 	Ports          []serverShowDetailPort   `json:"ports,omitempty" yaml:"ports,omitempty"`
 	Volumes        []serverShowDetailVolume `json:"volumes,omitempty" yaml:"volumes,omitempty"`
