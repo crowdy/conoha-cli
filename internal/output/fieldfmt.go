@@ -10,7 +10,7 @@ import (
 // display the underlying value rather than the pointer address (#193).
 // nil pointers render as the empty string.
 func formatFieldValue(v reflect.Value) string {
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return ""
 		}
