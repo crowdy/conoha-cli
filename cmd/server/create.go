@@ -122,12 +122,16 @@ var createCmd = &cobra.Command{
 			}
 		}
 
-		// Fetch image details (used for pre-flight validation and summary display)
+		// Fetch image details (used for pre-flight validation and summary display).
+		// FindImage accepts UUID, exact name, or unambiguous substring (#190),
+		// so e.g. --image ubuntu-24.04 can resolve to the catalog's full
+		// vmi-docker-...-ubuntu-24.04-amd64 entry.
 		imageAPI := api.NewImageAPI(client)
-		img, err := imageAPI.GetImage(imageID)
+		img, err := imageAPI.FindImage(imageID)
 		if err != nil {
-			return fmt.Errorf("fetching image details: %w", err)
+			return fmt.Errorf("resolving image: %w", err)
 		}
+		imageID = img.ID
 
 		// Pre-flight: validate image memory requirements (#32)
 		if img.MinRAM > 0 && flavor.RAM < img.MinRAM {

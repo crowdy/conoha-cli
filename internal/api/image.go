@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/crowdy/conoha-cli/internal/model"
 )
@@ -36,6 +37,68 @@ func (a *ImageAPI) GetImage(id string) (*model.Image, error) {
 		return nil, err
 	}
 	return &img, nil
+}
+
+// FindImage resolves an image by UUID, exact name, or unambiguous substring
+// match against active image names (#190). Substring matching lets users
+// say `--image ubuntu-24.04` and have the CLI pick e.g.
+// `vmi-docker-29.2-ubuntu-24.04-amd64` when that's the only candidate.
+//
+// Resolution is restricted to status=active so the CLI never returns a
+// half-baked image (queued/saving/killed) that the boot path would
+// then reject. Callers needing every image regardless of status should
+// use ListImages directly.
+//
+// Resolution order:
+//  1. UUID-shaped input → GetImage
+//  2. Exact name match against an active image → that image
+//  3. Single substring match (case-insensitive) → that image
+//  4. Multiple substring matches → error listing candidates
+//  5. No match → error with hint
+func (a *ImageAPI) FindImage(nameOrID string) (*model.Image, error) {
+	if looksLikeUUID(nameOrID) {
+		return a.GetImage(nameOrID)
+	}
+	if nameOrID == "" {
+		return nil, fmt.Errorf("image name cannot be empty (try `conoha image list` to see available images)")
+	}
+	images, err := a.ListImages()
+	if err != nil {
+		return nil, err
+	}
+	// Exact name match wins outright over substring — even if a fuzzy
+	// substring would also hit, an exact equality is unambiguous.
+	for i := range images {
+		if images[i].Status != "active" {
+			continue
+		}
+		if images[i].Name == nameOrID {
+			return &images[i], nil
+		}
+	}
+	needle := strings.ToLower(nameOrID)
+	var matches []*model.Image
+	for i := range images {
+		if images[i].Status != "active" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(images[i].Name), needle) {
+			matches = append(matches, &images[i])
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("image %q not found (try `conoha image list` to see available images)", nameOrID)
+	case 1:
+		return matches[0], nil
+	default:
+		names := make([]string, len(matches))
+		for i, m := range matches {
+			names[i] = m.Name
+		}
+		return nil, fmt.Errorf("image %q is ambiguous, matches %d images: %s.\nUse the full name or UUID instead",
+			nameOrID, len(matches), strings.Join(names, ", "))
+	}
 }
 
 func (a *ImageAPI) DeleteImage(id string) error {
