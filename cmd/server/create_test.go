@@ -177,6 +177,28 @@ func TestIsUsableFlavor(t *testing.T) {
 	}
 }
 
+// #196: g2d-* (built-in-disk family) must be rejected early.
+func TestIsUnsupportedFlavor(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"g2d-t-c2m4d60", true},
+		{"g2d-t-c4m8d100", true},
+		{"g2l-t-c2m4", false},
+		{"g2w-t-c2m4", false},
+		{"g2lp-t-c2m4", false}, // not a 'g2d-' prefix even if 'd' appears later
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isUnsupportedFlavor(tt.name); got != tt.want {
+				t.Errorf("isUnsupportedFlavor(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveUserData_MutualExclusion(t *testing.T) {
 	cmd := newTestCmd(map[string]string{
 		"user-data-raw": "echo hi",

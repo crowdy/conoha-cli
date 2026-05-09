@@ -104,6 +104,18 @@ var createCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("flavor %q not found: %w", flavorID, err)
 			}
+			// Refuse built-in-disk (g2d-*) flavors up front (#196). They require
+			// a server-side block_device_mapping payload the CLI does not
+			// currently build; the upstream API would otherwise return a
+			// confusing HTTP 400 ("block_device_mapping required") well after
+			// the create-summary prompt.
+			if isUnsupportedFlavor(flavor.Name) {
+				return fmt.Errorf(
+					"flavor %q is not supported by this CLI (built-in-disk family).\n"+
+						"Use a volume-backed flavor instead: g2l-* (Linux) or g2w-* (Windows).\n"+
+						"List available flavors with: conoha flavor list",
+					flavor.Name)
+			}
 			if !isUsableFlavor(flavor.Name) {
 				fmt.Fprintf(os.Stderr, "Warning: flavor %q may not be supported via public API\n", flavor.Name)
 			}
@@ -327,6 +339,14 @@ func resolveUserData(cmd *cobra.Command) (string, error) {
 // Only Linux (g2l) hourly (-t-) flavors are supported.
 func isUsableFlavor(name string) bool {
 	return strings.HasPrefix(name, "g2l-t-")
+}
+
+// isUnsupportedFlavor reports flavors that the CLI knows it cannot create
+// successfully today. g2d-* are built-in-disk flavors that require a
+// server-side block_device_mapping payload this CLI does not currently
+// build (see #196); refusing them early avoids a misleading HTTP 400.
+func isUnsupportedFlavor(name string) bool {
+	return strings.HasPrefix(name, "g2d-")
 }
 
 func selectFlavor(compute *api.ComputeAPI) (*model.Flavor, error) {
