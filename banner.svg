@@ -27,7 +27,7 @@
   <!-- Version badge (top-right) -->
   <g transform="translate(700, 20)">
     <rect width="80" height="22" rx="11" fill="#0b1220" stroke="#38bdf8" stroke-opacity="0.4" />
-    <text x="40" y="15" text-anchor="middle" class="version">v0.7.1</text>
+    <text x="40" y="15" text-anchor="middle" class="version">v0.8.0</text>
   </g>
 
   <!-- Decorative terminal lines (right side) -->
