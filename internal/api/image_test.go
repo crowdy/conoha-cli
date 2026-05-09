@@ -46,6 +46,93 @@ func TestImageList(t *testing.T) {
 	}
 }
 
+// #190: --image should accept UUID, exact name, or unambiguous substring.
+func TestImageFindImage(t *testing.T) {
+	const uuid = "12345678-1234-1234-1234-123456789abc"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v2/images/"+uuid):
+			json.NewEncoder(w).Encode(map[string]any{
+				"id": uuid, "name": "fetched-by-uuid", "status": "active",
+			})
+		default:
+			json.NewEncoder(w).Encode(map[string]any{
+				"images": []map[string]any{
+					{"id": "id-1", "name": "vmi-docker-29.2-ubuntu-24.04-amd64", "status": "active"},
+					{"id": "id-2", "name": "vmi-rails-7.1-ubuntu-24.04-amd64", "status": "active"},
+					{"id": "id-3", "name": "centos-stream-9", "status": "active"},
+					{"id": "id-4", "name": "stale-ubuntu-22.04", "status": "killed"},
+				},
+			})
+		}
+	}))
+	defer ts.Close()
+	t.Setenv("CONOHA_ENDPOINT", ts.URL)
+	api := NewImageAPI(newTestClient(ts))
+
+	t.Run("by UUID", func(t *testing.T) {
+		img, err := api.FindImage(uuid)
+		if err != nil {
+			t.Fatalf("FindImage(uuid) error: %v", err)
+		}
+		if img.ID != uuid {
+			t.Errorf("expected ID %q, got %q", uuid, img.ID)
+		}
+	})
+
+	t.Run("by exact name", func(t *testing.T) {
+		img, err := api.FindImage("centos-stream-9")
+		if err != nil {
+			t.Fatalf("FindImage(exact) error: %v", err)
+		}
+		if img.ID != "id-3" {
+			t.Errorf("expected ID 'id-3', got %q", img.ID)
+		}
+	})
+
+	t.Run("ambiguous substring lists candidates", func(t *testing.T) {
+		_, err := api.FindImage("ubuntu-24.04")
+		if err == nil {
+			t.Fatal("expected ambiguous-match error")
+		}
+		if !strings.Contains(err.Error(), "ambiguous") {
+			t.Errorf("expected 'ambiguous' in error, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "vmi-docker-29.2-ubuntu-24.04-amd64") {
+			t.Errorf("expected candidates listed, got: %v", err)
+		}
+	})
+
+	t.Run("unique substring resolves", func(t *testing.T) {
+		img, err := api.FindImage("centos")
+		if err != nil {
+			t.Fatalf("FindImage(unique substring) error: %v", err)
+		}
+		if img.ID != "id-3" {
+			t.Errorf("expected ID 'id-3', got %q", img.ID)
+		}
+	})
+
+	t.Run("substring ignores non-active images", func(t *testing.T) {
+		// 'stale-ubuntu-22.04' is killed; should not be matched.
+		_, err := api.FindImage("22.04")
+		if err == nil {
+			t.Fatal("expected not-found for killed image")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Errorf("expected 'not found' error, got: %v", err)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := api.FindImage("nonexistent-os")
+		if err == nil {
+			t.Fatal("expected not-found error")
+		}
+	})
+}
+
 func TestImageGet(t *testing.T) {
 	const imageID = "img-abc-123"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
