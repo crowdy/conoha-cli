@@ -11,7 +11,7 @@
 
 A command-line interface for the ConoHa VPS3 API. Written in Go as a single binary with an agent-friendly design.
 
-**[Documentation](https://crowdy.github.io/conoha-cli-pages/)** — Guides, deployment examples, and command reference
+**[Documentation](https://conoha-cli.crowdy.dev/)** — Guides, deployment examples, and command reference
 
 > **Note**: This tool is for VPS3 only. It is not compatible with legacy VPS2 CLIs (hironobu-s/conoha-vps, miyabisun/conoha-cli).
 
