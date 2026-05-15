@@ -11,7 +11,7 @@
 
 ConoHa VPS3 API용 커맨드라인 인터페이스입니다. Go로 작성된 싱글 바이너리로, 에이전트 친화적 설계를 채택하고 있습니다.
 
-**[문서 사이트](https://crowdy.github.io/conoha-cli-pages/)** — 가이드, 실전 배포 예제, 커맨드 레퍼런스
+**[문서 사이트](https://conoha-cli.crowdy.dev/)** — 가이드, 실전 배포 예제, 커맨드 레퍼런스
 
 > **참고**: 이 도구는 VPS3 전용입니다. 구 VPS2용 CLI(hironobu-s/conoha-vps, miyabisun/conoha-cli)와는 호환되지 않습니다.
 
