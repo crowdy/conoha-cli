@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -45,11 +47,39 @@ var sensitiveHeaders = map[string]bool{
 	"Authorization":   true,
 }
 
-var passwordRe = regexp.MustCompile(`"password"\s*:\s*"[^"]*"`)
+// secretRe matches a JSON member whose key is a known secret (exact key, so
+// "password_hash" is left alone) and whose value is a JSON string. The value
+// sub-pattern (?:[^"\\]|\\.)* consumes escaped quotes, so a value like
+// "a\"b" is masked whole instead of leaving a trailing fragment.
+var secretRe = regexp.MustCompile(`"(password|private_key|adminPass|secret)"\s*:\s*"(?:[^"\\]|\\.)*"`)
 
-// maskSensitive masks passwords and tokens in a string.
+// maskSensitive replaces the values of known secret-bearing JSON keys with
+// "****" so they never reach debug output (e.g. auth passwords, a Nova-issued
+// keypair private_key, a server adminPass, an application-credential secret).
 func maskSensitive(s string) string {
-	return passwordRe.ReplaceAllString(s, `"password":"****"`)
+	return secretRe.ReplaceAllString(s, `"${1}":"****"`)
+}
+
+// formatBody renders an HTTP body for debug output. JSON is pretty-printed and
+// every line is prefixed with dir ("> " for requests, "< " for responses) so a
+// multi-kilobyte payload prints as many short, readable lines rather than one
+// giant line whose start scrolls off-screen. Non-JSON bodies are emitted
+// verbatim on a single prefixed line. Passwords are always masked.
+func formatBody(dir string, body []byte) string {
+	masked := maskSensitive(string(body))
+	var pretty bytes.Buffer
+	if json.Indent(&pretty, []byte(masked), "", "  ") == nil {
+		masked = pretty.String()
+	}
+	var b strings.Builder
+	// Trim a single trailing newline so a body that already ends in "\n"
+	// (common for non-JSON payloads) does not yield a bare prefix-only line.
+	for _, line := range strings.Split(strings.TrimSuffix(masked, "\n"), "\n") {
+		b.WriteString(dir)
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func debugLogRequest(req *http.Request, body []byte) {
@@ -66,7 +96,7 @@ func debugLogRequest(req *http.Request, body []byte) {
 			fmt.Fprintf(os.Stderr, "> %s: %s\n", name, val)
 		}
 		if len(body) > 0 {
-			fmt.Fprintf(os.Stderr, "> %s\n", maskSensitive(string(body)))
+			fmt.Fprint(os.Stderr, formatBody("> ", body))
 		}
 	}
 }
@@ -85,7 +115,7 @@ func debugLogResponse(resp *http.Response, duration time.Duration, body []byte) 
 			fmt.Fprintf(os.Stderr, "< %s: %s\n", name, val)
 		}
 		if len(body) > 0 {
-			fmt.Fprintf(os.Stderr, "< %s\n", maskSensitive(string(body)))
+			fmt.Fprint(os.Stderr, formatBody("< ", body))
 		}
 	}
 	fmt.Fprintln(os.Stderr)
