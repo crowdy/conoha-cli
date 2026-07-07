@@ -58,6 +58,27 @@ func TestDebugLevelFromEnv(t *testing.T) {
 	}
 }
 
+func TestFormatBodyPrettyPrintsJSON(t *testing.T) {
+	// A JSON body must be indented and every line prefixed, so a large payload
+	// renders as many short, wrapping-friendly lines instead of one giant line
+	// whose start scrolls off-screen.
+	got := formatBody("< ", []byte(`{"a":1,"password":"secret"}`))
+	want := "< {\n<   \"a\": 1,\n<   \"password\": \"****\"\n< }\n"
+	if got != want {
+		t.Errorf("formatBody() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestFormatBodyNonJSONFallsBack(t *testing.T) {
+	// Non-JSON bodies (e.g. an HTML error page) are printed verbatim, one
+	// prefixed line, never dropped.
+	got := formatBody("> ", []byte("not json at all"))
+	want := "> not json at all\n"
+	if got != want {
+		t.Errorf("formatBody() = %q, want %q", got, want)
+	}
+}
+
 func TestSensitiveHeaders(t *testing.T) {
 	if !sensitiveHeaders["X-Auth-Token"] {
 		t.Error("X-Auth-Token should be sensitive")

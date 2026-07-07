@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -52,6 +54,26 @@ func maskSensitive(s string) string {
 	return passwordRe.ReplaceAllString(s, `"password":"****"`)
 }
 
+// formatBody renders an HTTP body for debug output. JSON is pretty-printed and
+// every line is prefixed with dir ("> " for requests, "< " for responses) so a
+// multi-kilobyte payload prints as many short, readable lines rather than one
+// giant line whose start scrolls off-screen. Non-JSON bodies are emitted
+// verbatim on a single prefixed line. Passwords are always masked.
+func formatBody(dir string, body []byte) string {
+	masked := maskSensitive(string(body))
+	var pretty bytes.Buffer
+	if json.Indent(&pretty, []byte(masked), "", "  ") == nil {
+		masked = pretty.String()
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(masked, "\n") {
+		b.WriteString(dir)
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 func debugLogRequest(req *http.Request, body []byte) {
 	if debugLevel < DebugVerbose {
 		return
@@ -66,7 +88,7 @@ func debugLogRequest(req *http.Request, body []byte) {
 			fmt.Fprintf(os.Stderr, "> %s: %s\n", name, val)
 		}
 		if len(body) > 0 {
-			fmt.Fprintf(os.Stderr, "> %s\n", maskSensitive(string(body)))
+			fmt.Fprint(os.Stderr, formatBody("> ", body))
 		}
 	}
 }
@@ -85,7 +107,7 @@ func debugLogResponse(resp *http.Response, duration time.Duration, body []byte) 
 			fmt.Fprintf(os.Stderr, "< %s: %s\n", name, val)
 		}
 		if len(body) > 0 {
-			fmt.Fprintf(os.Stderr, "< %s\n", maskSensitive(string(body)))
+			fmt.Fprint(os.Stderr, formatBody("< ", body))
 		}
 	}
 	fmt.Fprintln(os.Stderr)
