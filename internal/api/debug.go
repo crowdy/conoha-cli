@@ -47,11 +47,17 @@ var sensitiveHeaders = map[string]bool{
 	"Authorization":   true,
 }
 
-var passwordRe = regexp.MustCompile(`"password"\s*:\s*"[^"]*"`)
+// secretRe matches a JSON member whose key is a known secret (exact key, so
+// "password_hash" is left alone) and whose value is a JSON string. The value
+// sub-pattern (?:[^"\\]|\\.)* consumes escaped quotes, so a value like
+// "a\"b" is masked whole instead of leaving a trailing fragment.
+var secretRe = regexp.MustCompile(`"(password|private_key|adminPass|secret)"\s*:\s*"(?:[^"\\]|\\.)*"`)
 
-// maskSensitive masks passwords and tokens in a string.
+// maskSensitive replaces the values of known secret-bearing JSON keys with
+// "****" so they never reach debug output (e.g. auth passwords, a Nova-issued
+// keypair private_key, a server adminPass, an application-credential secret).
 func maskSensitive(s string) string {
-	return passwordRe.ReplaceAllString(s, `"password":"****"`)
+	return secretRe.ReplaceAllString(s, `"${1}":"****"`)
 }
 
 // formatBody renders an HTTP body for debug output. JSON is pretty-printed and

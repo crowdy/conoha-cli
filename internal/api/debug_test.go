@@ -1,6 +1,9 @@
 package api
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestMaskSensitive(t *testing.T) {
 	tests := []struct {
@@ -22,6 +25,31 @@ func TestMaskSensitive(t *testing.T) {
 			name:     "password with spaces",
 			input:    `{"password" : "my pass"}`,
 			expected: `{"password":"****"}`,
+		},
+		{
+			name:     "keypair private_key",
+			input:    `{"keypair":{"name":"k","private_key":"-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END-----\n"}}`,
+			expected: `{"keypair":{"name":"k","private_key":"****"}}`,
+		},
+		{
+			name:     "server adminPass",
+			input:    `{"server":{"id":"x","adminPass":"hunter2"}}`,
+			expected: `{"server":{"id":"x","adminPass":"****"}}`,
+		},
+		{
+			name:     "application credential secret",
+			input:    `{"application_credential":{"secret":"s3cr3t"}}`,
+			expected: `{"application_credential":{"secret":"****"}}`,
+		},
+		{
+			name:     "password value containing an escaped quote",
+			input:    `{"password":"a\"b","name":"keep"}`,
+			expected: `{"password":"****","name":"keep"}`,
+		},
+		{
+			name:     "similarly named key is not masked",
+			input:    `{"password_hash":"keep","secret_ref":"keep"}`,
+			expected: `{"password_hash":"keep","secret_ref":"keep"}`,
 		},
 	}
 
@@ -76,6 +104,19 @@ func TestFormatBodyNonJSONFallsBack(t *testing.T) {
 	want := "> not json at all\n"
 	if got != want {
 		t.Errorf("formatBody() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatBodyMasksPrivateKeyInPrettyPrint(t *testing.T) {
+	// A Nova-generated keypair response carries the private key in the body;
+	// formatBody must mask it even while pretty-printing.
+	body := []byte(`{"keypair":{"name":"k","private_key":"-----BEGIN KEY-----\nsecret\n-----END-----\n"}}`)
+	got := formatBody("< ", body)
+	if strings.Contains(got, "BEGIN KEY") || strings.Contains(got, "secret") {
+		t.Errorf("private key leaked in debug output:\n%s", got)
+	}
+	if !strings.Contains(got, `"private_key": "****"`) {
+		t.Errorf("expected masked private_key in output:\n%s", got)
 	}
 }
 
