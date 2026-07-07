@@ -66,7 +66,9 @@ func formatBody(dir string, body []byte) string {
 		masked = pretty.String()
 	}
 	var b strings.Builder
-	for _, line := range strings.Split(masked, "\n") {
+	// Trim a single trailing newline so a body that already ends in "\n"
+	// (common for non-JSON payloads) does not yield a bare prefix-only line.
+	for _, line := range strings.Split(strings.TrimSuffix(masked, "\n"), "\n") {
 		b.WriteString(dir)
 		b.WriteString(line)
 		b.WriteByte('\n')

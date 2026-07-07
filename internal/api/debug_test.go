@@ -79,6 +79,35 @@ func TestFormatBodyNonJSONFallsBack(t *testing.T) {
 	}
 }
 
+func TestFormatBodyIndentsJSONArrayRoot(t *testing.T) {
+	// A top-level JSON array (as returned by several list endpoints) is
+	// indented, not left on one line.
+	got := formatBody("< ", []byte(`[{"id":"x"}]`))
+	want := "< [\n<   {\n<     \"id\": \"x\"\n<   }\n< ]\n"
+	if got != want {
+		t.Errorf("formatBody() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestFormatBodyTrailingNewlineNoStrayLine(t *testing.T) {
+	// A non-JSON body ending in a newline must not produce a trailing
+	// prefix-only line (e.g. a bare "< ").
+	got := formatBody("< ", []byte("<html>error</html>\n"))
+	want := "< <html>error</html>\n"
+	if got != want {
+		t.Errorf("formatBody() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatBodyMultiLineNonJSON(t *testing.T) {
+	// Every line of a multi-line non-JSON body is prefixed.
+	got := formatBody("> ", []byte("line1\nline2"))
+	want := "> line1\n> line2\n"
+	if got != want {
+		t.Errorf("formatBody() = %q, want %q", got, want)
+	}
+}
+
 func TestSensitiveHeaders(t *testing.T) {
 	if !sensitiveHeaders["X-Auth-Token"] {
 		t.Error("X-Auth-Token should be sensitive")
