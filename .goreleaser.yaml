@@ -4,6 +4,8 @@ builds:
   - binary: conoha
     ldflags:
       - -s -w -X github.com/crowdy/conoha-cli/cmd.version={{.Version}}
+    env:
+      - CGO_ENABLED=0
     goos:
       - linux
       - darwin
